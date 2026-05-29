@@ -119,5 +119,28 @@ jobs:
         with:
           name: ImageBot ${{ github.ref_name }}
           files: ${{ env.ZIP_PATH }}
-          generate_release_notes: true
+          body: |
+            # ImageBot ${{ github.ref_name }} 更新说明
 
+            ## 下载和使用
+
+            1. 下载下面的 `ImageBot-${{ github.ref_name }}.zip`
+            2. 解压压缩包
+            3. 双击 `启动图片WebUI-独立Config版.bat`
+            4. 第一次打开时填写接口密钥（API Key）
+            5. 在底部输入想生成的图片内容，点击 `生成`
+
+            ## 工具说明
+
+            ImageBot 是 Windows 本地 Image2 生图工具，支持自定义接口地址和接口密钥（API Key），支持文生图和上传图片改图。
+
+            ## 安全说明
+
+            - 发布包不包含作者本地 API Key。
+            - 发布包内的 `config.ini` 会自动使用空的 `OPENAI_API_KEY=`。
+            - 发布包不包含本地生成历史、日志、已生成图片。
+
+            ## 完整改动
+
+            自动生成的完整改动记录见下方。
+          generate_release_notes: true
