@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check version tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Release tag must look like v1.2.3. Current: $tag"
+          }
+
+      - name: Scan committed files for API keys
+        shell: pwsh
+        run: |
+          $hits = @()
+          $files = Get-ChildItem -File -Recurse -Force |
+            Where-Object {
+              $_.FullName -notmatch '\\.git\\' -and
+              $_.FullName -notmatch '\\outputs\\' -and
+              $_.FullName -notmatch '\\logs\\' -and
+              $_.Name -notlike '*.zip'
+            }
+
+          foreach ($file in $files) {
+            $lineNo = 0
+            foreach ($line in Get-Content -LiteralPath $file.FullName -Encoding UTF8 -ErrorAction SilentlyContinue) {
+              $lineNo++
+              if ($line -match 'sk-[A-Za-z0-9_-]{12,}') {
+                $hits += "$($file.FullName):$lineNo"
+              }
+            }
+          }
+
+          if ($hits.Count -gt 0) {
+            $hits | ForEach-Object { Write-Error $_ }
+            throw "Possible API key found. Refusing to publish."
+          }
+
+      - name: Build clean zip
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $stage = Join-Path $PWD "package"
+          $zip = Join-Path $PWD "ImageBot-$tag.zip"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+
+          $files = @(
+            "openai_images_webui_no_python_config.ps1",
+            "webui_index.html",
+            "README.md",
+            "LICENSE",
+            "config.example.ini",
+            "启动图片WebUI-独立Config版.bat"
+          )
+
+          foreach ($file in $files) {
+            Copy-Item -LiteralPath $file -Destination (Join-Path $stage $file) -Force
+          }
+
+          Copy-Item -LiteralPath "config.example.ini" -Destination (Join-Path $stage "config.ini") -Force
+
+          @'
+          使用说明：
+          1. 解压后双击“启动图片WebUI-独立Config版.bat”。
+          2. 首次打开页面后，按配置向导填写 OPENAI_API_KEY。
+          3. 本发布包不包含历史记录、日志、已生成图片，也不包含已保存的 API Key。
+          '@ | Set-Content -LiteralPath (Join-Path $stage "发布说明.txt") -Encoding UTF8
+
+          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal -Force
+          "ZIP_PATH=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ZIP_NAME=ImageBot-$tag.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Verify package has no API key
+        shell: pwsh
+        run: |
+          $verify = Join-Path $PWD "verify"
+          New-Item -ItemType Directory -Path $verify -Force | Out-Null
+          Expand-Archive -LiteralPath $env:ZIP_PATH -DestinationPath $verify -Force
+
+          $configKey = Get-Content -LiteralPath (Join-Path $verify "config.ini") -Encoding UTF8 |
+            Where-Object { $_ -match '^\s*OPENAI_API_KEY\s*=' } |
+            Select-Object -First 1
+          if ($configKey -ne "OPENAI_API_KEY=") {
+            throw "Release config.ini must contain a blank OPENAI_API_KEY."
+          }
+
+          $hits = @()
+          foreach ($file in Get-ChildItem -LiteralPath $verify -File -Recurse -Force) {
+            $lineNo = 0
+            foreach ($line in Get-Content -LiteralPath $file.FullName -Encoding UTF8 -ErrorAction SilentlyContinue) {
+              $lineNo++
+              if ($line -match 'sk-[A-Za-z0-9_-]{12,}') {
+                $hits += "$($file.FullName):$lineNo"
+              }
+            }
+          }
+          if ($hits.Count -gt 0) {
+            $hits | ForEach-Object { Write-Error $_ }
+            throw "Possible API key found in package."
+          }
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ImageBot ${{ github.ref_name }}
+          files: ${{ env.ZIP_PATH }}
+          generate_release_notes: true
+

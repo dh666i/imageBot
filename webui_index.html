@@ -295,6 +295,19 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .setup-notice b { display: block; margin-bottom: 3px; }
 .setup-notice span { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.version-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--soft);
+  font: 12px/1.45 var(--mono);
+}
+.version-line a {
+  color: #e8e8e8;
+  text-decoration: none;
+}
+.version-line a:hover { text-decoration: underline; }
 
 .hero {
   min-height: calc(100vh - 330px);
@@ -311,29 +324,11 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .hero p {
   width: min(650px, 100%);
-  margin: 0 auto 25px;
+  margin: 0 auto;
   color: var(--muted);
   font-size: 16px;
   line-height: 1.75;
 }
-
-.quick-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-.quick {
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.045);
-  color: #ededed;
-  padding: 15px;
-  text-align: left;
-  cursor: pointer;
-}
-.quick:hover { background: var(--card-hover); border-color: var(--line-strong); transform: translateY(-1px); }
-.quick b { display: block; margin-bottom: 6px; letter-spacing: -0.01em; }
-.quick span { color: var(--soft); font-size: 12px; line-height: 1.55; }
 
 .messages {
   display: grid;
@@ -616,7 +611,7 @@ button { -webkit-tap-highlight-color: transparent; }
   font-weight: 1000;
 }
 .send:hover { filter: brightness(1.04); }
-.send:disabled, .upload:disabled, .preset:disabled, .prompt:disabled {
+.send:disabled, .upload:disabled, .prompt:disabled {
   opacity: 0.58;
   cursor: wait;
 }
@@ -629,22 +624,6 @@ button { -webkit-tap-highlight-color: transparent; }
   padding: 9px 5px 0;
   color: var(--soft);
   font-size: 12px;
-}
-.preset-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.preset {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.045);
-  padding: 7px 10px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 900;
-}
-.preset.active {
-  color: #050505;
-  border-color: #fff;
-  background: #fff;
 }
 .mode-hint { white-space: nowrap; }
 
@@ -692,6 +671,68 @@ button { -webkit-tap-highlight-color: transparent; }
   transition: opacity 0.2s ease;
 }
 .scrim.open { opacity: 1; pointer-events: auto; }
+
+.wizard {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(16px);
+}
+.wizard-card {
+  width: min(620px, 100%);
+  border: 1px solid var(--line-strong);
+  border-radius: 28px;
+  background: rgba(15, 15, 16, 0.96);
+  box-shadow: var(--shadow);
+  padding: 22px;
+}
+.wizard-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.wizard-head h2 {
+  margin: 0 0 6px;
+  font-size: 26px;
+  letter-spacing: -0.05em;
+}
+.wizard-head p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.wizard-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.wizard-step {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.045);
+  padding: 10px;
+  color: #dcdcdc;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.wizard-step b { display: block; color: #fff; margin-bottom: 3px; }
+.wizard-form {
+  display: grid;
+  gap: 11px;
+}
+.wizard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 16px;
+}
+.wizard-actions .btn { flex: 1; min-width: 128px; }
 
 .drawer {
   position: fixed;
@@ -819,7 +860,6 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
   .composer-wrap { left: 0; padding-left: 10px; padding-right: 10px; }
   .composer { width: min(920px, calc(100vw - 20px)); }
   .conversation { width: min(920px, calc(100% - 24px)); padding-bottom: 205px; }
-  .quick-grid { grid-template-columns: 1fr; }
   .message.user .bubble { max-width: 88%; }
   .composer-meta { align-items: flex-start; display: grid; }
   .mode-hint { white-space: normal; }
@@ -834,7 +874,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
   .hero h1 { font-size: 34px; }
   .input-line { grid-template-columns: auto minmax(0, 1fr) auto; }
   .send { min-width: 68px; }
-  .preset-row { max-height: 70px; overflow: auto; }
+  .wizard-steps { grid-template-columns: 1fr; }
   .image-grid { grid-template-columns: 1fr; }
   .admin-actions { grid-template-columns: 1fr; }
 }
@@ -855,6 +895,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
     <div class="side-foot">
       <div class="status-chip" id="keyStatus"><span class="dot bad"></span><span>配置读取中</span></div>
       <div class="status-chip" id="baseStatus"><span class="dot"></span><span>%%BASE_URL%%</span></div>
+      <div class="version-line"><span id="sideVersion">v1.1.0</span><a href="https://github.com/dh666i/imageBot/releases" target="_blank" rel="noreferrer">检查更新</a></div>
     </div>
   </aside>
 
@@ -878,13 +919,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
         <section class="hero" id="hero">
           <div class="hero-inner">
             <h1>想生成什么图片？</h1>
-            <p>像聊天一样输入需求即可生成。需要参考图片时，直接上传、拖进来，或粘贴截图，再告诉我要怎么改。</p>
-            <div class="quick-grid">
-              <button class="quick" data-prompt="生成一张高级黑白风格的电商产品海报，干净背景，真实摄影质感"><b>电商产品海报</b><span>适合商品主图、详情页视觉</span></button>
-              <button class="quick" data-prompt="生成一张专业头像写真，干净背景，真实摄影，柔和光线"><b>头像写真</b><span>适合个人形象照、社交头像</span></button>
-              <button class="quick" data-prompt="生成一张电影感海报，强构图，高级黑白色调，视觉冲击力强"><b>电影感海报</b><span>适合活动、宣传和封面</span></button>
-              <button class="quick" data-prompt="把参考图改成高级商业摄影风格，保持主体，背景更干净"><b>上传图片后改图</b><span>先上传或粘贴图片，再点这个模板</span></button>
-            </div>
+            <p>输入一句话即可生成图片。需要改图时，先上传、拖拽或粘贴图片，再说想怎么修改。</p>
           </div>
         </section>
 
@@ -904,13 +939,8 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
     </div>
     <input id="imageInput" class="hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple />
     <div class="composer-meta">
-      <div class="preset-row">
-        <button class="preset active" data-size="1024x1024" data-quality="high" data-bg="" data-format="">通用高清</button>
-        <button class="preset" data-size="1536x1024" data-quality="high" data-bg="opaque" data-format="png">电商白底</button>
-        <button class="preset" data-size="1024x1024" data-quality="high" data-bg="transparent" data-format="png">透明背景</button>
-        <button class="preset" data-size="1536x1024" data-quality="high" data-bg="" data-format="png">海报图</button>
-      </div>
       <span class="mode-hint" id="modeHint">直接输入文字即可生图 · Enter 生成，Shift+Enter 换行</span>
+      <span>高级参数在右上角设置</span>
     </div>
     <div class="progress"><span id="progressBar"></span></div>
   </div>
@@ -918,6 +948,33 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
 
 <div class="toast hidden" id="toast"></div>
 <div class="scrim" id="scrim"></div>
+
+<section class="wizard hidden" id="setupWizard" aria-modal="true" role="dialog">
+  <div class="wizard-card">
+    <div class="wizard-head">
+      <div>
+        <h2>首次使用配置</h2>
+        <p>只需要填一次 API Key。保存后就可以直接像聊天一样生成图片。</p>
+      </div>
+      <button class="icon-btn" id="closeWizardBtn">稍后</button>
+    </div>
+    <div class="wizard-steps">
+      <div class="wizard-step"><b>1. 填 Key</b><span>把中转后台的 API Key 粘贴到下面。</span></div>
+      <div class="wizard-step"><b>2. 保存</b><span>配置会写入本地 config.ini，不会上传到仓库。</span></div>
+      <div class="wizard-step"><b>3. 开始生成</b><span>回到输入框描述你想要的图片。</span></div>
+    </div>
+    <div class="wizard-form">
+      <label class="field"><span>Base URL</span><input id="wizardBaseUrl" value="%%BASE_URL%%" autocomplete="off" /></label>
+      <label class="field"><span>API Key</span><input id="wizardApiKey" type="password" placeholder="粘贴你的 API Key" autocomplete="off" /></label>
+      <label class="field"><span>模型</span><input id="wizardModel" value="%%MODEL%%" autocomplete="off" /></label>
+    </div>
+    <div class="wizard-actions">
+      <button class="btn primary" id="wizardSaveBtn">保存并开始</button>
+      <button class="btn" id="wizardTestBtn">测试连接</button>
+      <button class="btn" id="wizardMockBtn">先试用 Mock</button>
+    </div>
+  </div>
+</section>
 
 <aside class="drawer" id="drawer" aria-hidden="true">
   <div class="drawer-head">
@@ -954,12 +1011,14 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
       <div class="admin-actions">
         <button class="btn primary wide" id="saveConfigBtn">保存配置</button>
         <button class="btn" id="testBtn">测试连接</button>
+        <button class="btn" id="updateBtn">检查更新</button>
         <button class="btn" id="diagnoseBtn">诊断</button>
         <button class="btn" id="copyDiagBtn">复制诊断</button>
         <button class="btn" id="copyErrorBtn">复制错误</button>
         <button class="btn danger wide" id="clearHistoryBtn">清空历史</button>
       </div>
       <div class="status-chip" id="configText"><span class="dot"></span><span>加载中...</span></div>
+      <div class="version-line"><span>当前版本 <b id="drawerVersion">v1.1.0</b></span><a href="https://github.com/dh666i/imageBot/releases" target="_blank" rel="noreferrer">打开 Releases</a></div>
       <div class="diagnostics hidden" id="diagnosticsPanel"></div>
       <details class="raw"><summary>原始响应</summary><pre id="raw">{}</pre></details>
     </section>
@@ -968,6 +1027,8 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
 
 <script>
 const qs = id => document.getElementById(id);
+const APP_VERSION = "v1.1.0";
+const RELEASE_URL = "https://github.com/dh666i/imageBot/releases";
 const state = {
   config: null,
   files: [],
@@ -979,7 +1040,8 @@ const state = {
   maxUploadMb: 50,
   timeoutSec: 240,
   busy: false,
-  messageUrls: []
+  messageUrls: [],
+  wizardDismissed: false
 };
 
 const messages = qs("messages");
@@ -989,6 +1051,8 @@ const rawEl = qs("raw");
 const progressBar = qs("progressBar");
 const workspace = qs("workspace");
 const composer = qs("composer");
+qs("sideVersion").textContent = APP_VERSION;
+qs("drawerVersion").textContent = APP_VERSION;
 
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({
@@ -1035,7 +1099,7 @@ function setProgress(value) {
 
 function setBusy(value) {
   state.busy = value;
-  for (const el of [qs("sendBtn"), qs("uploadBtn"), qs("promptInput"), ...document.querySelectorAll(".preset")]) {
+  for (const el of [qs("sendBtn"), qs("uploadBtn"), qs("promptInput")]) {
     el.disabled = value;
   }
   qs("sendBtn").textContent = value ? "生成中" : "生成";
@@ -1070,6 +1134,49 @@ function configPayload() {
     timeout_sec: Number(qs("timeoutSecInput").value || state.timeoutSec || 240),
     mock: qs("mockMode").value === "1"
   };
+}
+
+function syncWizardFromSettings() {
+  qs("wizardBaseUrl").value = qs("baseUrl").value.trim() || (state.config && state.config.base_url) || "%%BASE_URL%%";
+  qs("wizardModel").value = qs("model").value.trim() || (state.config && state.config.model) || "%%MODEL%%";
+  if (!qs("wizardApiKey").value.trim()) qs("wizardApiKey").value = qs("apiKey").value.trim();
+}
+
+function applyWizardToSettings(mock = false) {
+  qs("baseUrl").value = qs("wizardBaseUrl").value.trim();
+  qs("apiKey").value = qs("wizardApiKey").value.trim();
+  qs("model").value = qs("wizardModel").value.trim();
+  qs("mockMode").value = mock ? "1" : "0";
+  renderConfig();
+}
+
+function openWizard(force = false) {
+  if (!force && state.wizardDismissed) return;
+  syncWizardFromSettings();
+  qs("setupWizard").classList.remove("hidden");
+  setTimeout(() => {
+    const target = qs("wizardApiKey").value.trim() ? qs("wizardSaveBtn") : qs("wizardApiKey");
+    target.focus();
+  }, 30);
+}
+
+function closeWizard() {
+  state.wizardDismissed = true;
+  qs("setupWizard").classList.add("hidden");
+}
+
+async function wizardSave(mock = false) {
+  applyWizardToSettings(mock);
+  if (!mock && !qs("apiKey").value.trim()) {
+    showToast("请先填写 API Key，或者点击“先试用 Mock”。");
+    qs("wizardApiKey").focus();
+    return;
+  }
+  try {
+    await saveConfig(true);
+    closeWizard();
+    showToast(mock ? "Mock 模式已开启，可以先体验界面。" : "配置已保存，可以开始生成。");
+  } catch {}
 }
 
 function optionPayload() {
@@ -1324,6 +1431,7 @@ function renderConfig() {
   const tempKey = qs("apiKey").value.trim();
   const mock = qs("mockMode").value === "1" || cfg.mock;
   const hasKey = Boolean(cfg.has_api_key || tempKey || mock);
+  const persistedReady = Boolean(cfg.has_api_key || cfg.mock);
   const statusText = mock ? "模拟模式" : hasKey ? "已就绪" : "未配置";
   const dotClass = mock ? "warn" : hasKey ? "" : "bad";
   const base = qs("baseUrl").value || cfg.base_url || "";
@@ -1335,6 +1443,8 @@ function renderConfig() {
   qs("modelLabel").textContent = model;
   qs("configText").innerHTML = `<span class="dot ${dotClass}"></span><span>${mock ? "模拟模式" : "真实请求"} · 超时 ${state.timeoutSec}s · ${hasKey ? "接口可用" : "缺少 Key"}</span>`;
   qs("setupNotice").classList.toggle("hidden", hasKey);
+  if (!hasKey) openWizard();
+  if (persistedReady && !qs("setupWizard").classList.contains("hidden")) closeWizard();
 }
 
 async function loadConfig() {
@@ -1414,7 +1524,7 @@ window.reusePromptFromOpenHistory = () => {
   scrollBottom();
 };
 
-async function saveConfig() {
+async function saveConfig(throwOnError = false) {
   try {
     const body = await requestJSON("/api/config/save", configPayload());
     state.config = body.config;
@@ -1422,7 +1532,11 @@ async function saveConfig() {
     qs("apiKey").value = "";
     renderConfig();
     showToast("配置已保存");
-  } catch {}
+    return true;
+  } catch (error) {
+    if (throwOnError) throw error;
+    return false;
+  }
 }
 
 async function diagnose() {
@@ -1556,25 +1670,6 @@ function autoSizePrompt() {
   input.style.height = `${Math.min(input.scrollHeight, 168)}px`;
 }
 
-for (const quick of document.querySelectorAll(".quick")) {
-  quick.addEventListener("click", () => {
-    qs("promptInput").value = quick.dataset.prompt || "";
-    autoSizePrompt();
-    qs("promptInput").focus();
-  });
-}
-
-for (const preset of document.querySelectorAll(".preset")) {
-  preset.addEventListener("click", () => {
-    document.querySelectorAll(".preset").forEach(item => item.classList.remove("active"));
-    preset.classList.add("active");
-    qs("sizeInput").value = preset.dataset.size || "1024x1024";
-    qs("qualityInput").value = preset.dataset.quality || "high";
-    qs("backgroundInput").value = preset.dataset.bg || "";
-    qs("outputFormatInput").value = preset.dataset.format || "";
-  });
-}
-
 qs("sendBtn").addEventListener("click", send);
 qs("promptInput").addEventListener("input", autoSizePrompt);
 qs("promptInput").addEventListener("keydown", event => {
@@ -1631,8 +1726,23 @@ qs("newChatBtn").addEventListener("click", () => {
 });
 qs("adminBtn").addEventListener("click", openDrawer);
 qs("topStatus").addEventListener("click", openDrawer);
-qs("setupNoticeBtn").addEventListener("click", openDrawer);
+qs("setupNoticeBtn").addEventListener("click", () => openWizard(true));
 qs("closeDrawerBtn").addEventListener("click", closeDrawer);
+qs("closeWizardBtn").addEventListener("click", closeWizard);
+qs("wizardSaveBtn").addEventListener("click", () => wizardSave(false));
+qs("wizardMockBtn").addEventListener("click", () => wizardSave(true));
+qs("wizardTestBtn").addEventListener("click", async () => {
+  applyWizardToSettings(false);
+  if (!qs("apiKey").value.trim()) {
+    showToast("请先填写 API Key 后再测试。");
+    qs("wizardApiKey").focus();
+    return;
+  }
+  try {
+    const body = await requestJSON("/api/test", commonPayload());
+    showToast(body.message || "连接测试完成");
+  } catch {}
+});
 qs("menuBtn").addEventListener("click", () => {
   if (qs("sidebar").classList.contains("open")) closeSidebar();
   else openSidebar();
@@ -1643,13 +1753,15 @@ qs("scrim").addEventListener("click", () => {
 });
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
+    closeWizard();
     closeDrawer();
     closeSidebar();
   }
 });
 
-qs("saveConfigBtn").addEventListener("click", saveConfig);
+qs("saveConfigBtn").addEventListener("click", () => saveConfig());
 qs("diagnoseBtn").addEventListener("click", diagnose);
+qs("updateBtn").addEventListener("click", () => window.open(RELEASE_URL, "_blank", "noreferrer"));
 qs("testBtn").addEventListener("click", async () => {
   try {
     const body = await requestJSON("/api/test", commonPayload());
