@@ -1,0 +1,9 @@
+config.ini
+outputs/
+logs/
+*.zip
+.package_*/
+.verify_*/
+.tmp-*
+*.pid
+
