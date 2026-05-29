@@ -1,118 +1,145 @@
-# ImageBot
+# ImageBot 图片生成工具
 
-Windows 本地图片生成 WebUI。无需 Python、Node.js 或数据库，双击 bat 即可启动，通过 OpenAI-compatible 图片接口完成文生图和图生图。
+这是一个 Windows 本地 Image2 生图工具。
+支持自定义接口地址和接口密钥（API Key），双击启动后就能在网页里像聊天一样生成图片。
 
-[下载最新版](https://github.com/dh666i/imageBot/releases/latest)
+[点这里下载最新版](https://github.com/dh666i/imageBot/releases/latest)
 
-## 3 步开始
+## 适合谁用
 
-1. 下载 Release 里的 `ImageBot-v*.zip` 并解压。
-2. 双击 `启动图片WebUI-独立Config版.bat`。
-3. 首次打开后按配置向导填写 API Key，然后开始生成。
+- 不会写代码，只想直接生成图片的人。
+- 想用自己的中转接口、自己的接口密钥（API Key）生图的人。
+- 需要文生图、上传图片改图的小工具。
+- 想把工具发给多个客户使用的人。
 
-也可以手动复制 `config.example.ini` 为 `config.ini`，再填写：
+## 最简单使用方法
 
-```ini
-OPENAI_API_KEY=你的 API Key
+1. 打开下载页面：[下载页面](https://github.com/dh666i/imageBot/releases/latest)
+2. 下载 `ImageBot-v版本号.zip`
+3. 解压这个压缩包
+4. 双击 `启动图片WebUI-独立Config版.bat`
+5. 浏览器会自动打开 ImageBot 页面
+6. 第一次使用时，按页面提示填写接口密钥（API Key）
+7. 在底部输入你想生成的图片内容，点击 `生成`
+
+## 第一次打开要填什么
+
+页面会弹出“首次使用配置”窗口。
+
+普通用户只需要关心这 3 项：
+
+- `接口密钥（API Key）`：填写你的接口密钥。
+- `接口地址（Base URL）`：接口地址，默认是 `https://api.henng.cn`，一般不用改。
+- `模型`：默认是 `gpt-image-2`，一般不用改。
+
+填好后点击 `保存并开始`。
+
+如果只是想先看看界面，不想消耗额度，可以点击 `先试用演示模式`。
+
+## 怎么生成图片
+
+### 直接文字生图
+
+在底部输入框里写一句话，例如：
+
+```text
+生成一张黑白高级感的咖啡机产品海报，干净背景，真实摄影
 ```
 
-## 界面设计
+然后点击 `生成`。
 
-主界面只保留普通用户需要的 3 个动作：
+### 上传图片后改图
 
-- 上传图片：需要改图时上传、拖拽或粘贴图片。
-- 输入需求：用自然语言描述想生成或修改的内容。
-- 生成：自动判断文生图或图生图。
+1. 点击 `上传图片`
+2. 选择一张或多张参考图
+3. 在输入框里写你想怎么改
+4. 点击 `生成`
 
-尺寸、质量、格式、数量、Base URL、模型等高级参数都在右上角 `设置` 里。
+例如：
 
-## 功能
+```text
+把这张图片改成高级商业摄影风格，背景更干净，主体保持不变
+```
 
-- 聊天式图片生成界面。
-- 文生图：直接输入提示词即可生成图片。
-- 图生图：上传、拖拽或粘贴参考图后输入修改要求。
-- 首次配置向导：没有 API Key 时自动引导配置。
-- 本地保存：可自动保存生成图片到 `outputs/`。
-- 本地历史：生成记录写入 `outputs/history.jsonl`。
-- 管理员设置：Base URL、API Key、模型、超时、Mock 模式。
-- 诊断工具：连接测试、配置诊断、错误复制。
-- 检查更新：设置面板可打开 GitHub Releases。
+也可以直接把图片拖进页面，或者复制图片后粘贴到输入框。
 
-## 配置
+## 图片保存在哪里
 
-`config.example.ini` 是公开模板，不包含 API Key。真实密钥只应该写入本地 `config.ini`，该文件已被 `.gitignore` 排除。
+生成后的图片会保存在本地：
 
-常用配置：
+```text
+outputs/
+```
+
+页面左侧也会显示最近生成记录。
+
+## 自定义接口地址和接口密钥
+
+这个工具支持自定义接口。
+
+你可以在网页右上角点击 `设置`，修改：
+
+- `接口地址（Base URL）`：你的接口地址
+- `接口密钥（API Key）`：你的接口密钥
+- `模型`：例如 `gpt-image-2`
+- `超时`：默认 240 秒
+
+也可以编辑本地的 `config.ini`。
+
+注意：`接口地址（Base URL）` 填根地址即可，不要带 `/v1`。
+
+正确示例：
 
 ```ini
 OPENAI_BASE_URL=https://api.henng.cn
-OPENAI_API_KEY=
-OPENAI_IMAGE_MODEL=gpt-image-2
-IMAGE_WEBUI_PORT=7861
-IMAGE_WEBUI_TIMEOUT=240
-IMAGE_WEBUI_SAVE_OUTPUTS=1
-IMAGE_WEBUI_OUTPUT_DIR=outputs
-IMAGE_WEBUI_LOG_DIR=logs
-IMAGE_WEBUI_MOCK=0
 ```
 
-`OPENAI_BASE_URL` 填根地址即可，不要带 `/v1`。程序会自动请求：
-
-```text
-/v1/images/generations
-/v1/images/edits
-```
-
-## Mock 测试模式
-
-如果只想测试界面、不请求上游、不消耗额度：
+不要写成：
 
 ```ini
-IMAGE_WEBUI_MOCK=1
+OPENAI_BASE_URL=https://api.henng.cn/v1
 ```
-
-也可以在首次配置向导中点击 `先试用 Mock`。
-
-## 自动发布
-
-项目包含 GitHub Actions 发布流程：
-
-- 推送 `v*` tag 时自动打包。
-- 发布包内自动生成空 `config.ini`。
-- 自动扫描 `sk-...` 形式的密钥，发现后中止发布。
-- 自动上传 zip 到 GitHub Release。
-
-## 文件说明
-
-- `启动图片WebUI-独立Config版.bat`：Windows 双击启动器。
-- `openai_images_webui_no_python_config.ps1`：本地 WebUI 服务和接口代理。
-- `webui_index.html`：聊天式前端界面。
-- `config.example.ini`：公开配置模板。
-- `config.ini`：本地私有配置，不应提交到仓库。
-- `outputs/`：生成图片和历史记录，不应提交到仓库。
-- `logs/`：运行日志，不应提交到仓库。
 
 ## 常见问题
 
-### 生成卡住或 504
+### 双击后没有打开网页
 
-本地默认超时是 240 秒。如果仍然约 60 秒失败，通常是中转、网关或 CDN 的回源超时限制，需要在上游网关处调高等待时间。
+先看黑色窗口里有没有报错。
+也可以手动打开：
 
-### Key 缺失
-
-首次打开页面会出现配置向导。也可以在右上角 `设置` 里填写 API Key。
-
-### Base URL 怎么填
-
-填写根地址，例如：
-
-```ini
-OPENAI_BASE_URL=https://api.henng.cn
+```text
+http://127.0.0.1:7861
 ```
 
-不要填写成带 `/v1` 的地址。
+### 提示接口密钥缺失
 
-## License
+说明还没有填写密钥。
+点击右上角 `设置`，填写接口密钥（API Key）后保存。
+
+### 生成 60 秒左右失败
+
+这通常不是本地电脑的问题，而是中转、网关或 CDN 的等待时间太短。
+本工具本地默认超时是 240 秒，如果上游 60 秒就断开，需要在上游网关里调高超时时间。
+
+### 想先测试，不想消耗额度
+
+打开右上角 `设置`，把 `演示模式（Mock）` 改成开启。
+演示模式只生成本地测试图，不会请求真实接口。
+
+### 可以发给客户用吗
+
+可以。
+发布包里不会带你的接口密钥（API Key）。客户第一次打开时，需要填写他们自己的接口密钥，或者你提前帮他们配置好本地 `config.ini`。
+
+## 文件说明
+
+- `启动图片WebUI-独立Config版.bat`：双击启动工具。
+- `config.ini`：本地配置文件，保存接口地址和接口密钥。
+- `webui_index.html`：网页界面。
+- `openai_images_webui_no_python_config.ps1`：本地服务程序。
+- `outputs/`：生成图片保存位置。
+- `logs/`：运行日志。
+
+## 开源协议
 
 MIT
-

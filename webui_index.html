@@ -895,7 +895,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
     <div class="side-foot">
       <div class="status-chip" id="keyStatus"><span class="dot bad"></span><span>配置读取中</span></div>
       <div class="status-chip" id="baseStatus"><span class="dot"></span><span>%%BASE_URL%%</span></div>
-      <div class="version-line"><span id="sideVersion">v1.1.0</span><a href="https://github.com/dh666i/imageBot/releases" target="_blank" rel="noreferrer">检查更新</a></div>
+      <div class="version-line"><span id="sideVersion">v1.1.1</span><a href="https://github.com/dh666i/imageBot/releases" target="_blank" rel="noreferrer">检查更新</a></div>
     </div>
   </aside>
 
@@ -912,7 +912,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
     <section class="workspace" id="workspace">
       <div class="conversation">
         <div class="setup-notice hidden" id="setupNotice">
-          <div><b>还没有可用的 API Key</b><span>真实生成前需要先完成接口配置；如果只是演示界面，可以在设置里打开 Mock 测试。</span></div>
+          <div><b>还没有可用的接口密钥</b><span>真实生成前需要先完成接口配置；如果只是演示界面，可以在设置里打开演示模式（Mock）。</span></div>
           <button class="btn primary" id="setupNoticeBtn">打开设置</button>
         </div>
 
@@ -954,24 +954,24 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
     <div class="wizard-head">
       <div>
         <h2>首次使用配置</h2>
-        <p>只需要填一次 API Key。保存后就可以直接像聊天一样生成图片。</p>
+        <p>只需要填一次接口密钥。保存后就可以直接像聊天一样生成图片。</p>
       </div>
       <button class="icon-btn" id="closeWizardBtn">稍后</button>
     </div>
     <div class="wizard-steps">
-      <div class="wizard-step"><b>1. 填 Key</b><span>把中转后台的 API Key 粘贴到下面。</span></div>
+      <div class="wizard-step"><b>1. 填写密钥</b><span>把中转后台的接口密钥粘贴到下面。</span></div>
       <div class="wizard-step"><b>2. 保存</b><span>配置会写入本地 config.ini，不会上传到仓库。</span></div>
       <div class="wizard-step"><b>3. 开始生成</b><span>回到输入框描述你想要的图片。</span></div>
     </div>
     <div class="wizard-form">
-      <label class="field"><span>Base URL</span><input id="wizardBaseUrl" value="%%BASE_URL%%" autocomplete="off" /></label>
-      <label class="field"><span>API Key</span><input id="wizardApiKey" type="password" placeholder="粘贴你的 API Key" autocomplete="off" /></label>
+      <label class="field"><span>接口地址（Base URL）</span><input id="wizardBaseUrl" value="%%BASE_URL%%" autocomplete="off" /></label>
+      <label class="field"><span>接口密钥（API Key）</span><input id="wizardApiKey" type="password" placeholder="粘贴你的接口密钥" autocomplete="off" /></label>
       <label class="field"><span>模型</span><input id="wizardModel" value="%%MODEL%%" autocomplete="off" /></label>
     </div>
     <div class="wizard-actions">
       <button class="btn primary" id="wizardSaveBtn">保存并开始</button>
       <button class="btn" id="wizardTestBtn">测试连接</button>
-      <button class="btn" id="wizardMockBtn">先试用 Mock</button>
+      <button class="btn" id="wizardMockBtn">先试用演示模式</button>
     </div>
   </div>
 </section>
@@ -984,12 +984,12 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
   <div class="drawer-body">
     <section class="drawer-card">
       <h3>接口配置</h3>
-      <label class="field"><span>Base URL</span><input id="baseUrl" value="%%BASE_URL%%" autocomplete="off" /></label>
-      <label class="field"><span>API Key</span><input id="apiKey" type="password" placeholder="留空使用 config.ini" autocomplete="off" /></label>
+      <label class="field"><span>接口地址（Base URL）</span><input id="baseUrl" value="%%BASE_URL%%" autocomplete="off" /></label>
+      <label class="field"><span>接口密钥（API Key）</span><input id="apiKey" type="password" placeholder="留空使用 config.ini" autocomplete="off" /></label>
       <label class="field"><span>模型</span><input id="model" value="%%MODEL%%" autocomplete="off" /></label>
       <div class="field-row">
         <label class="field"><span>服务端超时（秒）</span><input id="timeoutSecInput" type="number" min="10" max="1800" value="240" /></label>
-        <label class="field"><span>Mock 测试</span><select id="mockMode"><option value="0">关闭</option><option value="1">开启</option></select></label>
+        <label class="field"><span>演示模式（Mock）</span><select id="mockMode"><option value="0">关闭</option><option value="1">开启</option></select></label>
       </div>
     </section>
 
@@ -1018,7 +1018,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
         <button class="btn danger wide" id="clearHistoryBtn">清空历史</button>
       </div>
       <div class="status-chip" id="configText"><span class="dot"></span><span>加载中...</span></div>
-      <div class="version-line"><span>当前版本 <b id="drawerVersion">v1.1.0</b></span><a href="https://github.com/dh666i/imageBot/releases" target="_blank" rel="noreferrer">打开 Releases</a></div>
+      <div class="version-line"><span>当前版本 <b id="drawerVersion">v1.1.1</b></span><a href="https://github.com/dh666i/imageBot/releases" target="_blank" rel="noreferrer">打开下载页面</a></div>
       <div class="diagnostics hidden" id="diagnosticsPanel"></div>
       <details class="raw"><summary>原始响应</summary><pre id="raw">{}</pre></details>
     </section>
@@ -1027,7 +1027,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
 
 <script>
 const qs = id => document.getElementById(id);
-const APP_VERSION = "v1.1.0";
+const APP_VERSION = "v1.1.1";
 const RELEASE_URL = "https://github.com/dh666i/imageBot/releases";
 const state = {
   config: null,
@@ -1112,7 +1112,7 @@ function scrollBottom() {
 function humanError(message) {
   const text = String(message || "");
   if (/504|Gateway Timeout/i.test(text)) return text + "\n处理建议：网关或 CDN 等待时间不够，联系管理员检查回源超时。";
-  if (/401|403|key|API Key/i.test(text)) return text + "\n处理建议：检查 API Key 是否填写或有效。";
+  if (/401|403|key|API Key/i.test(text)) return text + "\n处理建议：检查接口密钥是否填写或有效。";
   if (/model|模型/i.test(text)) return text + "\n处理建议：确认模型名称是否被中转支持。";
   if (/abort|timeout|超时/i.test(text)) return text + "\n处理建议：图片生成较慢时，确认本地和中转网关超时都大于 240 秒。";
   return text;
@@ -1168,14 +1168,14 @@ function closeWizard() {
 async function wizardSave(mock = false) {
   applyWizardToSettings(mock);
   if (!mock && !qs("apiKey").value.trim()) {
-    showToast("请先填写 API Key，或者点击“先试用 Mock”。");
+    showToast("请先填写接口密钥，或者点击“先试用演示模式”。");
     qs("wizardApiKey").focus();
     return;
   }
   try {
     await saveConfig(true);
     closeWizard();
-    showToast(mock ? "Mock 模式已开启，可以先体验界面。" : "配置已保存，可以开始生成。");
+    showToast(mock ? "演示模式已开启，可以先体验界面。" : "配置已保存，可以开始生成。");
   } catch {}
 }
 
@@ -1432,7 +1432,7 @@ function renderConfig() {
   const mock = qs("mockMode").value === "1" || cfg.mock;
   const hasKey = Boolean(cfg.has_api_key || tempKey || mock);
   const persistedReady = Boolean(cfg.has_api_key || cfg.mock);
-  const statusText = mock ? "模拟模式" : hasKey ? "已就绪" : "未配置";
+  const statusText = mock ? "演示模式" : hasKey ? "已就绪" : "未配置";
   const dotClass = mock ? "warn" : hasKey ? "" : "bad";
   const base = qs("baseUrl").value || cfg.base_url || "";
   const model = qs("model").value || cfg.model || "";
@@ -1441,7 +1441,7 @@ function renderConfig() {
   qs("topStatus").innerHTML = `<span class="dot ${dotClass}"></span><span>${statusText} · ${esc(model || "未选择模型")}</span>`;
   qs("baseStatus").innerHTML = `<span class="dot"></span><span>${esc(base)}</span>`;
   qs("modelLabel").textContent = model;
-  qs("configText").innerHTML = `<span class="dot ${dotClass}"></span><span>${mock ? "模拟模式" : "真实请求"} · 超时 ${state.timeoutSec}s · ${hasKey ? "接口可用" : "缺少 Key"}</span>`;
+  qs("configText").innerHTML = `<span class="dot ${dotClass}"></span><span>${mock ? "演示模式" : "真实请求"} · 超时 ${state.timeoutSec}s · ${hasKey ? "接口可用" : "缺少密钥"}</span>`;
   qs("setupNotice").classList.toggle("hidden", hasKey);
   if (!hasKey) openWizard();
   if (persistedReady && !qs("setupWizard").classList.contains("hidden")) closeWizard();
@@ -1734,7 +1734,7 @@ qs("wizardMockBtn").addEventListener("click", () => wizardSave(true));
 qs("wizardTestBtn").addEventListener("click", async () => {
   applyWizardToSettings(false);
   if (!qs("apiKey").value.trim()) {
-    showToast("请先填写 API Key 后再测试。");
+    showToast("请先填写接口密钥后再测试。");
     qs("wizardApiKey").focus();
     return;
   }
