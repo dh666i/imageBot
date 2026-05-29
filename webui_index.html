@@ -308,6 +308,30 @@ button { -webkit-tap-highlight-color: transparent; }
   text-decoration: none;
 }
 .version-line a:hover { text-decoration: underline; }
+.link-btn {
+  border: 0;
+  background: transparent;
+  color: #e8e8e8;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.link-btn:hover { text-decoration: underline; }
+.update-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.045);
+  padding: 11px;
+}
+.update-card b { display: block; color: #fff; margin-bottom: 2px; }
+.update-card span {
+  display: block;
+  color: var(--muted);
+  font: 12px/1.55 var(--mono);
+  word-break: break-word;
+}
 
 .hero {
   min-height: calc(100vh - 330px);
@@ -895,7 +919,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
     <div class="side-foot">
       <div class="status-chip" id="keyStatus"><span class="dot bad"></span><span>配置读取中</span></div>
       <div class="status-chip" id="baseStatus"><span class="dot"></span><span>%%BASE_URL%%</span></div>
-      <div class="version-line"><span id="sideVersion">v1.1.1</span><a href="https://github.com/dh666i/imageBot/releases" target="_blank" rel="noreferrer">检查更新</a></div>
+      <div class="version-line"><span id="sideVersion">%%APP_VERSION%%</span><button class="link-btn" id="sideUpdateBtn" type="button">检查更新</button></div>
     </div>
   </aside>
 
@@ -1018,7 +1042,8 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
         <button class="btn danger wide" id="clearHistoryBtn">清空历史</button>
       </div>
       <div class="status-chip" id="configText"><span class="dot"></span><span>加载中...</span></div>
-      <div class="version-line"><span>当前版本 <b id="drawerVersion">v1.1.1</b></span><a href="https://github.com/dh666i/imageBot/releases" target="_blank" rel="noreferrer">打开下载页面</a></div>
+      <div class="version-line"><span>当前版本 <b id="drawerVersion">%%APP_VERSION%%</b></span><button class="link-btn" id="drawerUpdateBtn" type="button">检查更新</button></div>
+      <div class="update-card hidden" id="updatePanel"></div>
       <div class="diagnostics hidden" id="diagnosticsPanel"></div>
       <details class="raw"><summary>原始响应</summary><pre id="raw">{}</pre></details>
     </section>
@@ -1027,8 +1052,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
 
 <script>
 const qs = id => document.getElementById(id);
-const APP_VERSION = "v1.1.1";
-const RELEASE_URL = "https://github.com/dh666i/imageBot/releases";
+const APP_VERSION = "%%APP_VERSION%%";
 const state = {
   config: null,
   files: [],
@@ -1041,7 +1065,10 @@ const state = {
   timeoutSec: 240,
   busy: false,
   messageUrls: [],
-  wizardDismissed: false
+  wizardDismissed: false,
+  updateInfo: null,
+  updateBusy: false,
+  updateApplied: false
 };
 
 const messages = qs("messages");
@@ -1561,6 +1588,90 @@ async function postSimple(path, payload = {}) {
   return body;
 }
 
+function renderUpdatePanel(info, message = "") {
+  const panel = qs("updatePanel");
+  panel.classList.remove("hidden");
+  if (!info) {
+    state.updateInfo = null;
+    state.updateApplied = false;
+    panel.innerHTML = `<b>更新检查失败</b><span>${esc(message || "请稍后再试。")}</span>`;
+    qs("updateBtn").textContent = "重新检查";
+    qs("sideUpdateBtn").textContent = "重新检查";
+    qs("drawerUpdateBtn").textContent = "重新检查";
+    return;
+  }
+  state.updateInfo = info;
+  state.updateApplied = false;
+  if (info.update_available) {
+    panel.innerHTML = `<b>发现新版本 ${esc(info.latest_version)}</b><span>当前版本 ${esc(info.current_version)}，点击“立即更新”会自动下载并覆盖程序文件，不会覆盖 config.ini、outputs、logs。</span>`;
+    qs("updateBtn").textContent = "立即更新";
+    qs("sideUpdateBtn").textContent = "有可用更新";
+    qs("drawerUpdateBtn").textContent = "立即更新";
+  } else {
+    panel.innerHTML = `<b>已是最新版</b><span>当前版本 ${esc(info.current_version)}，暂时没有可用更新。</span>`;
+    qs("updateBtn").textContent = "检查更新";
+    qs("sideUpdateBtn").textContent = "已是最新版";
+    qs("drawerUpdateBtn").textContent = "检查更新";
+  }
+}
+
+async function checkUpdate() {
+  if (state.updateBusy) return;
+  state.updateBusy = true;
+  qs("updateBtn").textContent = "检查中";
+  qs("sideUpdateBtn").textContent = "检查中";
+  qs("drawerUpdateBtn").textContent = "检查中";
+  try {
+    const response = await fetch("/api/update/check", { cache: "no-store" });
+    const body = await response.json();
+    if (!response.ok || body.error) throw new Error((body.error && body.error.message) || body.message || `HTTP ${response.status}`);
+    renderUpdatePanel(body);
+    showToast(body.update_available ? `发现新版本 ${body.latest_version}` : "当前已经是最新版");
+  } catch (error) {
+    renderUpdatePanel(null, error.message || String(error));
+    showToast(`检查更新失败：${error.message || error}`);
+  } finally {
+    state.updateBusy = false;
+  }
+}
+
+async function applyUpdate() {
+  if (!state.updateInfo || !state.updateInfo.update_available) {
+    await checkUpdate();
+    return;
+  }
+  if (!confirm(`发现新版本 ${state.updateInfo.latest_version}，现在下载并更新？\n\n本操作不会覆盖 config.ini、outputs、logs。`)) return;
+  if (state.updateBusy) return;
+  state.updateBusy = true;
+  qs("updateBtn").textContent = "更新中";
+  qs("sideUpdateBtn").textContent = "更新中";
+  qs("drawerUpdateBtn").textContent = "更新中";
+  try {
+    const body = await requestJSON("/api/update/apply", {});
+    qs("updatePanel").classList.remove("hidden");
+    qs("updatePanel").innerHTML = `<b>${body.updated ? "更新完成" : "无需更新"}</b><span>${esc(body.message || "")}</span>`;
+    state.updateApplied = Boolean(body.updated);
+    state.updateInfo = body.updated ? null : (body.update || null);
+    qs("updateBtn").textContent = body.updated ? "重启后生效" : "检查更新";
+    qs("sideUpdateBtn").textContent = body.updated ? "重启后生效" : "检查更新";
+    qs("drawerUpdateBtn").textContent = body.updated ? "重启后生效" : "检查更新";
+    showToast(body.message || "更新完成");
+  } catch (error) {
+    renderUpdatePanel(null, error.message || String(error));
+  } finally {
+    state.updateBusy = false;
+  }
+}
+
+function handleUpdateClick() {
+  if (state.updateApplied) {
+    showToast("更新已完成，请重启后生效");
+    return;
+  }
+  if (state.updateInfo && state.updateInfo.update_available) applyUpdate();
+  else checkUpdate();
+}
+
 window.deleteHistory = async (event, index) => {
   event.stopPropagation();
   const item = state.historyItems[index];
@@ -1761,7 +1872,12 @@ document.addEventListener("keydown", event => {
 
 qs("saveConfigBtn").addEventListener("click", () => saveConfig());
 qs("diagnoseBtn").addEventListener("click", diagnose);
-qs("updateBtn").addEventListener("click", () => window.open(RELEASE_URL, "_blank", "noreferrer"));
+qs("updateBtn").addEventListener("click", handleUpdateClick);
+qs("sideUpdateBtn").addEventListener("click", () => {
+  openDrawer();
+  handleUpdateClick();
+});
+qs("drawerUpdateBtn").addEventListener("click", handleUpdateClick);
 qs("testBtn").addEventListener("click", async () => {
   try {
     const body = await requestJSON("/api/test", commonPayload());

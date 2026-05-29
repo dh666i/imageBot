@@ -46,6 +46,8 @@ function Read-ConfigFile([string]$path) {
 }
 
 $Config = Read-ConfigFile $ConfigPath
+$AppVersion = "v1.2.0"
+$UpdateRepo = "dh666i/imageBot"
 
 function ConfigValue([string]$key, [string]$default) {
     if ($Config.ContainsKey($key)) {
@@ -161,7 +163,8 @@ function Save-ConfigValues($values) {
     if (-not [string]::IsNullOrWhiteSpace($script:IndexHtmlTemplate)) {
         $script:IndexHtml = $script:IndexHtmlTemplate.
             Replace("%%BASE_URL%%", (HtmlAttr $script:BaseUrl)).
-            Replace("%%MODEL%%", (HtmlAttr $script:DefaultModel))
+            Replace("%%MODEL%%", (HtmlAttr $script:DefaultModel)).
+            Replace("%%APP_VERSION%%", (HtmlAttr $script:AppVersion))
     }
 }
 
@@ -626,6 +629,7 @@ function Get-ConfigWarnings {
 function Get-ConfigSnapshot {
     return [ordered]@{
         app = "GPT Image Web UI"
+        version = $AppVersion
         base_url = $BaseUrl
         base_url_raw = $BaseUrlRaw
         model = $DefaultModel
@@ -644,6 +648,275 @@ function Get-ConfigSnapshot {
         force_response_format = $ForceResponseFormat
         include_stream_flag = $IncludeStreamFlag
         warnings = @(Get-ConfigWarnings)
+    }
+}
+
+function Compare-VersionText([string]$left, [string]$right) {
+    $a = (($left + "").Trim().TrimStart([char[]]@("v", "V")) -split "[\.-]")
+    $b = (($right + "").Trim().TrimStart([char[]]@("v", "V")) -split "[\.-]")
+    $max = [Math]::Max($a.Count, $b.Count)
+    for ($i = 0; $i -lt $max; $i++) {
+        $ai = 0
+        $bi = 0
+        if ($i -lt $a.Count) { [void][int]::TryParse(([string]$a[$i]), [ref]$ai) }
+        if ($i -lt $b.Count) { [void][int]::TryParse(([string]$b[$i]), [ref]$bi) }
+        if ($ai -gt $bi) { return 1 }
+        if ($ai -lt $bi) { return -1 }
+    }
+    return 0
+}
+
+function Invoke-HttpGetText([string]$url, [int]$timeoutSec = 20) {
+    $request = [System.Net.HttpWebRequest]::Create($url)
+    $request.Method = "GET"
+    $request.Accept = "application/vnd.github+json, application/json, text/plain, */*"
+    $request.UserAgent = "ImageBot/$AppVersion"
+    $request.Timeout = $timeoutSec * 1000
+    $request.ReadWriteTimeout = $timeoutSec * 1000
+    $request.KeepAlive = $false
+    $response = $null
+    $reader = $null
+    try {
+        $response = [System.Net.HttpWebResponse]$request.GetResponse()
+        $reader = New-Object System.IO.StreamReader($response.GetResponseStream(), [System.Text.Encoding]::UTF8)
+        return $reader.ReadToEnd()
+    } finally {
+        if ($null -ne $reader) { $reader.Close() }
+        if ($null -ne $response) { $response.Close() }
+    }
+}
+
+function Invoke-HttpDownloadFile([string]$url, [string]$destination, [int]$timeoutSec = 180) {
+    $request = [System.Net.HttpWebRequest]::Create($url)
+    $request.Method = "GET"
+    $request.Accept = "application/zip, application/octet-stream, */*"
+    $request.UserAgent = "ImageBot/$AppVersion"
+    $request.Timeout = $timeoutSec * 1000
+    $request.ReadWriteTimeout = $timeoutSec * 1000
+    $request.KeepAlive = $false
+    $response = $null
+    $inputStream = $null
+    $fileStream = $null
+    try {
+        $response = [System.Net.HttpWebResponse]$request.GetResponse()
+        $inputStream = $response.GetResponseStream()
+        $fileStream = [System.IO.File]::Create($destination)
+        $buffer = New-Object byte[] 65536
+        while ($true) {
+            $read = $inputStream.Read($buffer, 0, $buffer.Length)
+            if ($read -le 0) { break }
+            $fileStream.Write($buffer, 0, $read)
+        }
+    } finally {
+        if ($null -ne $fileStream) { $fileStream.Close() }
+        if ($null -ne $inputStream) { $inputStream.Close() }
+        if ($null -ne $response) { $response.Close() }
+    }
+}
+
+function Get-LatestReleaseTagFromRedirect {
+    $url = "https://github.com/$UpdateRepo/releases/latest"
+    $request = [System.Net.HttpWebRequest]::Create($url)
+    $request.Method = "GET"
+    $request.UserAgent = "ImageBot/$AppVersion"
+    $request.Accept = "text/html, */*"
+    $request.AllowAutoRedirect = $false
+    $request.Timeout = 20000
+    $request.ReadWriteTimeout = 20000
+    $response = $null
+    try {
+        $response = [System.Net.HttpWebResponse]$request.GetResponse()
+        $location = [string]$response.Headers["Location"]
+        if ([string]::IsNullOrWhiteSpace($location)) { return "" }
+        $idx = $location.LastIndexOf("/tag/")
+        if ($idx -lt 0) { return "" }
+        return $location.Substring($idx + 5).Trim("/")
+    } finally {
+        if ($null -ne $response) { $response.Close() }
+    }
+}
+
+function Get-UpdateInfo {
+    $apiUrl = "https://api.github.com/repos/$UpdateRepo/releases/latest"
+    $release = $null
+    try {
+        $text = Invoke-HttpGetText $apiUrl 20
+        $release = $text | ConvertFrom-Json
+    } catch {
+        $release = $null
+    }
+
+    $latest = ""
+    if ($null -ne $release) {
+        $latest = ([string](Get-Prop $release "tag_name" "")).Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($latest)) {
+        $latest = Get-LatestReleaseTagFromRedirect
+    }
+    if ([string]::IsNullOrWhiteSpace($latest)) {
+        throw (New-HttpException 502 "没有读取到最新版本号。")
+    }
+
+    $asset = $null
+    if ($null -ne $release) {
+        foreach ($item in (Get-Prop $release "assets" @())) {
+            $name = [string](Get-Prop $item "name" "")
+            if ($name.ToLowerInvariant().EndsWith(".zip") -and $name.ToLowerInvariant().Contains("imagebot")) {
+                $asset = $item
+                break
+            }
+        }
+        foreach ($item in (Get-Prop $release "assets" @())) {
+            if ($null -ne $asset) { break }
+            $name = [string](Get-Prop $item "name" "")
+            if ($name.ToLowerInvariant().EndsWith(".zip")) {
+                $asset = $item
+                break
+            }
+        }
+    }
+
+    $assetName = ""
+    $assetUrl = ""
+    $assetSize = 0
+    if ($null -ne $asset) {
+        $assetName = [string](Get-Prop $asset "name" "")
+        $assetUrl = [string](Get-Prop $asset "browser_download_url" "")
+        $assetSize = [int](Get-Prop $asset "size" 0)
+    } else {
+        $assetName = "ImageBot-$latest.zip"
+        $assetUrl = "https://github.com/$UpdateRepo/releases/download/$latest/$assetName"
+    }
+
+    $cmp = Compare-VersionText $latest $AppVersion
+    return [ordered]@{
+        ok = $true
+        current_version = $AppVersion
+        latest_version = $latest
+        update_available = ($cmp -gt 0)
+        release_name = $(if ($null -ne $release) { [string](Get-Prop $release "name" "") } else { "ImageBot $latest" })
+        release_url = $(if ($null -ne $release) { [string](Get-Prop $release "html_url" "") } else { "https://github.com/$UpdateRepo/releases/tag/$latest" })
+        published_at = $(if ($null -ne $release) { [string](Get-Prop $release "published_at" "") } else { "" })
+        body = $(if ($null -ne $release) { [string](Get-Prop $release "body" "") } else { "" })
+        asset_name = $assetName
+        asset_url = $assetUrl
+        asset_size = $assetSize
+    }
+}
+
+function Read-ZipEntryBytes([string]$zipPath, [string]$entryName) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+    try {
+        $entry = $zip.Entries | Where-Object { (($_.FullName -replace "\\", "/") -eq $entryName) } | Select-Object -First 1
+        if ($null -eq $entry) { return $null }
+        $stream = $entry.Open()
+        $memory = New-Object System.IO.MemoryStream
+        try {
+            $stream.CopyTo($memory)
+            return $memory.ToArray()
+        } finally {
+            $memory.Close()
+            $stream.Close()
+        }
+    } finally {
+        $zip.Dispose()
+    }
+}
+
+function Handle-UpdateCheck {
+    return Get-UpdateInfo
+}
+
+function Handle-UpdateApply($payload) {
+    $info = Get-UpdateInfo
+    if (-not $info.update_available) {
+        return [ordered]@{ ok = $true; updated = $false; message = "当前已经是最新版。"; update = $info }
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$info.asset_url)) {
+        throw (New-HttpException 502 "最新版本没有可下载的 zip 发布包。")
+    }
+    if (-not ([string]$info.asset_url).StartsWith("https://github.com/$UpdateRepo/releases/download/")) {
+        throw (New-HttpException 502 "更新包地址不在预期仓库内，已停止更新。")
+    }
+
+    $updateRoot = Join-Path $ScriptDir ".updates"
+    Ensure-Directory $updateRoot
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $downloadPath = Join-Path $updateRoot ("ImageBot-update-$stamp.zip")
+    $backupDir = Join-Path $updateRoot ("backup-$stamp")
+    Ensure-Directory $backupDir
+
+    Invoke-HttpDownloadFile ([string]$info.asset_url) $downloadPath 240
+    $keyBytes = Read-ZipEntryBytes $downloadPath "config.ini"
+    if ($null -eq $keyBytes) {
+        throw (New-HttpException 502 "更新包缺少 config.ini，已停止更新。")
+    }
+    $configText = [System.Text.Encoding]::UTF8.GetString($keyBytes)
+    if ($configText -match "sk-[A-Za-z0-9_-]{12,}") {
+        throw (New-HttpException 502 "更新包内疑似包含 API Key，已停止更新。")
+    }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($downloadPath)
+    $updatedFiles = New-Object System.Collections.ArrayList
+    $allowed = @(
+        "openai_images_webui_no_python_config.ps1",
+        "webui_index.html",
+        "README.md",
+        "LICENSE",
+        "config.example.ini",
+        "启动图片WebUI-独立Config版.bat",
+        "发布说明.txt"
+    )
+    try {
+        foreach ($name in $allowed) {
+            $entry = $zip.Entries | Where-Object { (($_.FullName -replace "\\", "/") -eq $name) } | Select-Object -First 1
+            if ($null -eq $entry) { continue }
+            $target = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir $name))
+            $scriptRoot = [System.IO.Path]::GetFullPath($ScriptDir).TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
+            if (-not $target.StartsWith($scriptRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw (New-HttpException 500 "更新目标路径异常：$name")
+            }
+            if (Test-Path -LiteralPath $target) {
+                Copy-Item -LiteralPath $target -Destination (Join-Path $backupDir $name) -Force
+            }
+            $stream = $entry.Open()
+            $fileStream = $null
+            try {
+                $fileStream = [System.IO.File]::Create($target)
+                $stream.CopyTo($fileStream)
+            } finally {
+                if ($null -ne $fileStream) { $fileStream.Close() }
+                $stream.Close()
+            }
+            [void]$updatedFiles.Add($name)
+        }
+    } finally {
+        $zip.Dispose()
+    }
+
+    if ($updatedFiles.Count -eq 0) {
+        throw (New-HttpException 502 "更新包没有可更新的程序文件。")
+    }
+
+    try {
+        $script:IndexHtmlTemplate = Get-Content -Raw -LiteralPath (Join-Path $ScriptDir "webui_index.html") -Encoding UTF8
+        $script:IndexHtml = $script:IndexHtmlTemplate.
+            Replace("%%BASE_URL%%", (HtmlAttr $script:BaseUrl)).
+            Replace("%%MODEL%%", (HtmlAttr $script:DefaultModel)).
+            Replace("%%APP_VERSION%%", (HtmlAttr ([string]$info.latest_version)))
+    } catch {}
+
+    Write-AppLog "info" "updated app current=$AppVersion latest=$($info.latest_version) files=$($updatedFiles -join ',') backup=$backupDir"
+    return [ordered]@{
+        ok = $true
+        updated = $true
+        message = "更新已下载并覆盖程序文件。请关闭黑色启动窗口，然后重新双击启动以完全生效。"
+        current_version = $AppVersion
+        latest_version = $info.latest_version
+        backup_dir = $backupDir
+        updated_files = @($updatedFiles.ToArray())
     }
 }
 
@@ -1129,7 +1402,8 @@ if (Test-Path -LiteralPath $ExternalIndexPath) {
 
 $IndexHtml = $IndexHtmlTemplate.
     Replace("%%BASE_URL%%", (HtmlAttr $BaseUrl)).
-    Replace("%%MODEL%%", (HtmlAttr $DefaultModel))
+    Replace("%%MODEL%%", (HtmlAttr $DefaultModel)).
+    Replace("%%APP_VERSION%%", (HtmlAttr $AppVersion))
 
 function Send-HttpResponse($client, [int]$statusCode, [string]$contentType, [string]$body) {
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
@@ -1295,6 +1569,10 @@ function Route-Request($client, $req) {
         Send-Json $client 200 (Get-ConfigSnapshot)
         return
     }
+    if ($method -eq "GET" -and $path -eq "/api/update/check") {
+        Send-Json $client 200 (Handle-UpdateCheck)
+        return
+    }
     if ($method -eq "GET" -and $path -eq "/api/history") {
         Send-Json $client 200 ([ordered]@{ items = @(Get-HistoryRecords 50) })
         return
@@ -1318,6 +1596,11 @@ function Route-Request($client, $req) {
     if ($method -eq "POST" -and $path -eq "/api/diagnostics") {
         $payload = Parse-JsonBody $req.body
         Send-Json $client 200 (Handle-Diagnostics $payload)
+        return
+    }
+    if ($method -eq "POST" -and $path -eq "/api/update/apply") {
+        $payload = Parse-JsonBody $req.body
+        Send-Json $client 200 (Handle-UpdateApply $payload)
         return
     }
     if ($method -eq "POST" -and $path -eq "/api/history/delete") {

@@ -4,6 +4,6 @@ logs/
 *.zip
 .package_*/
 .verify_*/
+.updates/
 .tmp-*
 *.pid
-
