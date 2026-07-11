@@ -46,7 +46,7 @@ function Read-ConfigFile([string]$path) {
 }
 
 $Config = Read-ConfigFile $ConfigPath
-$AppVersion = "v1.2.0"
+$AppVersion = "v1.3.0"
 $UpdateRepo = "dh666i/imageBot"
 
 function ConfigValue([string]$key, [string]$default) {
@@ -465,6 +465,7 @@ function Append-HistoryRecord([string]$action, [string]$status, $payload, $resul
             model = [string](Get-Prop $payload "model" $DefaultModel)
             size = [string](Get-Prop $payload "size" "")
             quality = [string](Get-Prop $payload "quality" "")
+            background = [string](Get-Prop $payload "background" "")
             output_format = [string](Get-Prop $payload "output_format" "")
             image_count = @($images).Count
             images = @($images)
@@ -529,6 +530,71 @@ function Clear-HistoryRecords {
     Ensure-Directory $OutputDir
     Set-Content -LiteralPath $HistoryFile -Value @() -Encoding UTF8
     return [ordered]@{ ok = $true; remaining = 0 }
+}
+
+function Get-AppImageFiles {
+    if (-not (Test-Path -LiteralPath $OutputDir)) { return @() }
+    return @(
+        Get-ChildItem -LiteralPath $OutputDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^\d{8}-\d{6}-(generate|edit|mock)-\d+-[a-f0-9]{8}\.(png|jpe?g|webp|gif|svg)$' }
+    )
+}
+
+function Get-AppLogFiles {
+    if (-not (Test-Path -LiteralPath $LogDir)) { return @() }
+    return @(
+        Get-ChildItem -LiteralPath $LogDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^webui-\d{8}\.log$' }
+    )
+}
+
+function Get-SpecificFileStats($files) {
+    $items = @($files | Where-Object { $null -ne $_ })
+    [long]$bytes = 0
+    foreach ($file in $items) { $bytes += [long]$file.Length }
+    return [ordered]@{ files = $items.Count; bytes = $bytes }
+}
+
+function Get-StorageSnapshot {
+    $images = Get-SpecificFileStats (Get-AppImageFiles)
+    $logs = Get-SpecificFileStats (Get-AppLogFiles)
+    $historyCount = 0
+    if (Test-Path -LiteralPath $HistoryFile) {
+        $historyCount = @(
+            Get-Content -LiteralPath $HistoryFile -Encoding UTF8 -ErrorAction SilentlyContinue |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        ).Count
+    }
+    return [ordered]@{
+        ok = $true
+        images = $images
+        logs = $logs
+        history_records = $historyCount
+        total_bytes = ([long]$images.bytes + [long]$logs.bytes)
+    }
+}
+
+function Clear-Storage([string]$target) {
+    $name = ($target + "").Trim().ToLowerInvariant()
+    if ($name -eq "history") {
+        [void](Clear-HistoryRecords)
+    } elseif ($name -eq "images") {
+        foreach ($file in @(Get-AppImageFiles)) {
+            Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
+        }
+        [void](Clear-HistoryRecords)
+    } elseif ($name -eq "logs") {
+        foreach ($file in @(Get-AppLogFiles)) {
+            Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
+        }
+    } else {
+        throw (New-HttpException 400 "不支持的清理类型。")
+    }
+    return [ordered]@{
+        ok = $true
+        cleared = $name
+        storage = (Get-StorageSnapshot)
+    }
 }
 
 function Get-RecentLogLines([int]$limit) {
@@ -1577,6 +1643,10 @@ function Route-Request($client, $req) {
         Send-Json $client 200 ([ordered]@{ items = @(Get-HistoryRecords 50) })
         return
     }
+    if ($method -eq "GET" -and $path -eq "/api/storage") {
+        Send-Json $client 200 (Get-StorageSnapshot)
+        return
+    }
     if ($method -eq "GET" -and $path.StartsWith("/outputs/")) {
         Handle-OutputFile $client $path
         return
@@ -1611,6 +1681,11 @@ function Route-Request($client, $req) {
     if ($method -eq "POST" -and $path -eq "/api/history/clear") {
         [void](Parse-JsonBody $req.body)
         Send-Json $client 200 (Clear-HistoryRecords)
+        return
+    }
+    if ($method -eq "POST" -and $path -eq "/api/storage/clear") {
+        $payload = Parse-JsonBody $req.body
+        Send-Json $client 200 (Clear-Storage ([string](Get-Prop $payload "target" "")))
         return
     }
     if ($method -eq "POST" -and $path -eq "/api/generate") {

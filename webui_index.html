@@ -204,6 +204,12 @@ button { -webkit-tap-highlight-color: transparent; }
   max-width: min(42vw, 420px);
 }
 .top-status:hover { color: #fff; border-color: var(--line-strong); background: var(--card-hover); }
+.status-chip span:last-child, .top-status span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .dot {
   width: 8px;
@@ -471,6 +477,9 @@ button { -webkit-tap-highlight-color: transparent; }
   gap: 12px;
 }
 .image-card {
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 22px;
@@ -639,6 +648,7 @@ button { -webkit-tap-highlight-color: transparent; }
   opacity: 0.58;
   cursor: wait;
 }
+button:disabled { opacity: 0.52; cursor: not-allowed; }
 
 .composer-meta {
   display: flex;
@@ -649,7 +659,60 @@ button { -webkit-tap-highlight-color: transparent; }
   color: var(--soft);
   font-size: 12px;
 }
-.mode-hint { white-space: nowrap; }
+.size-presets {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.size-presets > span { margin-right: 3px; color: var(--soft); }
+.size-preset, .more-settings, .stop-btn {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.045);
+  padding: 7px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+.size-preset.active {
+  color: #050505;
+  border-color: #fff;
+  background: linear-gradient(180deg, #fff, #d8d8d8);
+}
+.more-settings:hover, .size-preset:hover, .stop-btn:hover {
+  color: #fff;
+  border-color: var(--line-strong);
+  background: var(--card-hover);
+}
+.composer-status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 24px;
+  padding: 5px 5px 0;
+  color: var(--soft);
+  font-size: 12px;
+}
+.mode-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.generation-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 9px 4px 0;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.055);
+  padding: 9px 10px;
+}
+.generation-copy { min-width: 0; display: grid; gap: 2px; }
+.generation-copy b { font-size: 12px; }
+.generation-copy span { color: var(--muted); font: 11px/1.45 var(--mono); }
+.stop-btn { flex: 0 0 auto; color: #f2f2f2; }
 
 .progress {
   height: 4px;
@@ -757,6 +820,31 @@ button { -webkit-tap-highlight-color: transparent; }
   margin-top: 16px;
 }
 .wizard-actions .btn { flex: 1; min-width: 128px; }
+.wizard-advanced {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0 12px;
+}
+.wizard-advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  padding: 11px 0;
+  font-size: 13px;
+  font-weight: 900;
+}
+.wizard-advanced[open] summary { color: #fff; }
+.wizard-advanced .wizard-form { padding: 0 0 12px; }
+.connection-status {
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 10px 11px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.connection-status.ok { color: #fff; border-color: var(--line-strong); }
 
 .drawer {
   position: fixed;
@@ -804,6 +892,37 @@ button { -webkit-tap-highlight-color: transparent; }
   font-size: 14px;
   letter-spacing: -0.01em;
 }
+.drawer-card > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 950;
+}
+.drawer-card > summary::-webkit-details-marker { display: none; }
+.drawer-card > summary::after {
+  content: "+";
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+}
+.drawer-card[open] > summary::after { content: "-"; color: #fff; }
+.drawer-card > summary span {
+  display: block;
+  color: var(--soft);
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.drawer-details { display: grid; gap: 12px; padding-top: 13px; }
+.field-help { color: var(--soft); font-size: 11px; line-height: 1.5; }
 .field {
   display: grid;
   gap: 7px;
@@ -834,6 +953,19 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
   gap: 9px;
 }
 .admin-actions .wide { grid-column: 1 / -1; }
+.storage-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.storage-stat {
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 10px;
+}
+.storage-stat b { display: block; margin-bottom: 3px; font-size: 13px; }
+.storage-stat span { color: var(--muted); font: 11px/1.45 var(--mono); }
 .diagnostics { display: grid; gap: 9px; }
 .diag-card {
   border: 1px solid var(--line);
@@ -886,6 +1018,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
   .conversation { width: min(920px, calc(100% - 24px)); padding-bottom: 205px; }
   .message.user .bubble { max-width: 88%; }
   .composer-meta { align-items: flex-start; display: grid; }
+  .size-presets { overflow-x: auto; padding-bottom: 2px; }
   .mode-hint { white-space: normal; }
   .upload { min-width: 48px; padding: 0 12px; }
   .upload span { display: none; }
@@ -898,9 +1031,19 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
   .hero h1 { font-size: 34px; }
   .input-line { grid-template-columns: auto minmax(0, 1fr) auto; }
   .send { min-width: 68px; }
+  .composer-meta { display: block; }
+  #composerConfigSummary, .composer-status-line { display: none; }
+  .size-presets { width: 100%; }
+  .size-presets > span { flex: 0 0 auto; }
+  .size-preset, .more-settings { flex: 1 0 auto; }
   .wizard-steps { grid-template-columns: 1fr; }
+  .wizard { place-items: stretch; padding: 0; }
+  .wizard-card { width: 100%; max-height: 100dvh; overflow: auto; border-radius: 0; padding: 18px; }
+  .drawer { width: 100vw; }
   .image-grid { grid-template-columns: 1fr; }
   .admin-actions { grid-template-columns: 1fr; }
+  .storage-summary { grid-template-columns: 1fr; }
+  .generation-status { align-items: flex-start; }
 }
 </style>
 </head>
@@ -958,13 +1101,24 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
     <div class="file-strip" id="fileStrip"></div>
     <div class="input-line">
       <button class="upload" id="uploadBtn" title="上传图片"><b>+</b><span>上传图片</span></button>
-      <textarea class="prompt" id="promptInput" rows="1" placeholder="描述你想生成的图片，或上传图片后描述怎么修改"></textarea>
+      <textarea class="prompt" id="promptInput" rows="1" placeholder="描述想生成或修改的图片"></textarea>
       <button class="send" id="sendBtn">生成</button>
     </div>
     <input id="imageInput" class="hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple />
     <div class="composer-meta">
-      <span class="mode-hint" id="modeHint">直接输入文字即可生图 · Enter 生成，Shift+Enter 换行</span>
-      <span>高级参数在右上角设置</span>
+      <div class="size-presets" aria-label="常用图片尺寸">
+        <span>尺寸</span>
+        <button class="size-preset active" type="button" data-size="1024x1024">方形</button>
+        <button class="size-preset" type="button" data-size="1536x1024">横图</button>
+        <button class="size-preset" type="button" data-size="1024x1536">竖图</button>
+        <button class="more-settings" id="moreSettingsBtn" type="button">更多设置</button>
+      </div>
+      <span id="composerConfigSummary">1 张 · 高清</span>
+    </div>
+    <div class="composer-status-line"><span class="mode-hint" id="modeHint">直接输入文字即可生图 · Enter 生成，Shift+Enter 换行</span></div>
+    <div class="generation-status hidden" id="generationStatus">
+      <div class="generation-copy"><b id="generationTitle">正在生成图片</b><span id="generationTimer">已等待 0 秒，请不要关闭窗口</span></div>
+      <button class="stop-btn" id="stopBtn" type="button">停止等待</button>
     </div>
     <div class="progress"><span id="progressBar"></span></div>
   </div>
@@ -988,9 +1142,15 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
       <div class="wizard-step"><b>3. 开始生成</b><span>回到输入框描述你想要的图片。</span></div>
     </div>
     <div class="wizard-form">
-      <label class="field"><span>接口地址（Base URL）</span><input id="wizardBaseUrl" value="%%BASE_URL%%" autocomplete="off" /></label>
-      <label class="field"><span>接口密钥（API Key）</span><input id="wizardApiKey" type="password" placeholder="粘贴你的接口密钥" autocomplete="off" /></label>
-      <label class="field"><span>模型</span><input id="wizardModel" value="%%MODEL%%" autocomplete="off" /></label>
+      <label class="field"><span>接口密钥</span><input id="wizardApiKey" type="password" placeholder="粘贴你的接口密钥" autocomplete="off" /></label>
+      <details class="wizard-advanced">
+        <summary>接口地址和模型（一般不用修改）</summary>
+        <div class="wizard-form">
+          <label class="field"><span>接口地址</span><input id="wizardBaseUrl" value="%%BASE_URL%%" autocomplete="off" /></label>
+          <label class="field"><span>模型</span><input id="wizardModel" value="%%MODEL%%" autocomplete="off" /></label>
+        </div>
+      </details>
+      <div class="connection-status hidden" id="wizardConnectionStatus"></div>
     </div>
     <div class="wizard-actions">
       <button class="btn primary" id="wizardSaveBtn">保存并开始</button>
@@ -1002,51 +1162,72 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
 
 <aside class="drawer" id="drawer" aria-hidden="true">
   <div class="drawer-head">
-    <strong>管理员设置</strong>
+    <strong>设置</strong>
     <button class="icon-btn" id="closeDrawerBtn">收起设置</button>
   </div>
   <div class="drawer-body">
     <section class="drawer-card">
-      <h3>接口配置</h3>
-      <label class="field"><span>接口地址（Base URL）</span><input id="baseUrl" value="%%BASE_URL%%" autocomplete="off" /></label>
-      <label class="field"><span>接口密钥（API Key）</span><input id="apiKey" type="password" placeholder="留空使用 config.ini" autocomplete="off" /></label>
-      <label class="field"><span>模型</span><input id="model" value="%%MODEL%%" autocomplete="off" /></label>
-      <div class="field-row">
-        <label class="field"><span>服务端超时（秒）</span><input id="timeoutSecInput" type="number" min="10" max="1800" value="240" /></label>
-        <label class="field"><span>演示模式（Mock）</span><select id="mockMode"><option value="0">关闭</option><option value="1">开启</option></select></label>
-      </div>
-    </section>
-
-    <section class="drawer-card">
-      <h3>图片默认参数</h3>
-      <div class="field-row">
-        <label class="field"><span>尺寸</span><select id="sizeInput"><option>1024x1024</option><option>1536x1024</option><option>1024x1536</option><option>2048x2048</option><option>2048x1152</option><option>auto</option></select></label>
-        <label class="field"><span>生成数量</span><select id="countInput"><option value="1">1 张</option><option value="2">2 张</option><option value="4">4 张</option></select></label>
-      </div>
-      <div class="field-row">
-        <label class="field"><span>清晰度</span><select id="qualityInput"><option value="high">高</option><option value="medium">中</option><option value="low">低</option><option value="auto">自动</option><option value="">默认</option></select></label>
-        <label class="field"><span>背景</span><select id="backgroundInput"><option value="">默认</option><option value="auto">自动</option><option value="opaque">不透明</option><option value="transparent">透明</option></select></label>
-      </div>
-      <label class="field"><span>输出格式</span><select id="outputFormatInput"><option value="">默认</option><option>png</option><option>jpeg</option><option>webp</option></select></label>
-    </section>
-
-    <section class="drawer-card">
-      <h3>维护工具</h3>
+      <h3>常用设置</h3>
+      <label class="field"><span>接口地址</span><input id="baseUrl" value="%%BASE_URL%%" autocomplete="off" /><small class="field-help">通常保持默认，不要在末尾填写 /v1。</small></label>
+      <label class="field"><span>接口密钥</span><input id="apiKey" type="password" placeholder="已保存时可留空" autocomplete="off" /><small class="field-help">密钥只保存在这台电脑的 config.ini 中。</small></label>
       <div class="admin-actions">
-        <button class="btn primary wide" id="saveConfigBtn">保存配置</button>
+        <button class="btn primary" id="saveConfigBtn">保存</button>
         <button class="btn" id="testBtn">测试连接</button>
-        <button class="btn" id="updateBtn">检查更新</button>
+      </div>
+      <div class="connection-status" id="connectionStatus">正在读取本机配置...</div>
+    </section>
+
+    <details class="drawer-card" id="advancedSettings">
+      <summary>高级设置<span>图片参数、模型、超时和演示模式</span></summary>
+      <div class="drawer-details">
+        <label class="field"><span>模型</span><input id="model" value="%%MODEL%%" autocomplete="off" /></label>
+        <div class="field-row">
+          <label class="field"><span>尺寸</span><select id="sizeInput"><option>1024x1024</option><option>1536x1024</option><option>1024x1536</option><option>2048x2048</option><option>2048x1152</option><option>auto</option></select></label>
+          <label class="field"><span>生成数量</span><select id="countInput"><option value="1">1 张</option><option value="2">2 张</option><option value="4">4 张</option></select></label>
+        </div>
+        <div class="field-row">
+          <label class="field"><span>清晰度</span><select id="qualityInput"><option value="high">高</option><option value="medium">中</option><option value="low">低</option><option value="auto">自动</option><option value="">默认</option></select></label>
+          <label class="field"><span>背景</span><select id="backgroundInput"><option value="">默认</option><option value="auto">自动</option><option value="opaque">不透明</option><option value="transparent">透明</option></select></label>
+        </div>
+        <label class="field"><span>输出格式</span><select id="outputFormatInput"><option value="">默认</option><option>png</option><option>jpeg</option><option>webp</option></select></label>
+        <div class="field-row">
+          <label class="field"><span>等待上限（秒）</span><input id="timeoutSecInput" type="number" min="10" max="1800" value="240" /></label>
+          <label class="field"><span>演示模式</span><select id="mockMode"><option value="0">关闭</option><option value="1">开启</option></select></label>
+        </div>
+      </div>
+    </details>
+
+    <details class="drawer-card" id="storageSettings">
+      <summary>本地文件<span>查看占用空间，清理历史、图片和日志</span></summary>
+      <div class="drawer-details">
+        <div class="storage-summary" id="storageSummary">
+          <div class="storage-stat"><b>生成图片</b><span>读取中...</span></div>
+          <div class="storage-stat"><b>运行日志</b><span>读取中...</span></div>
+        </div>
+        <div class="admin-actions">
+          <button class="btn" id="clearHistoryBtn">仅清空历史</button>
+          <button class="btn danger" id="clearImagesBtn">清空图片和历史</button>
+          <button class="btn danger wide" id="clearLogsBtn">清空运行日志</button>
+        </div>
+      </div>
+    </details>
+
+    <details class="drawer-card" id="maintenanceSettings">
+      <summary>维护工具<span>软件更新和问题诊断</span></summary>
+      <div class="drawer-details">
+      <div class="admin-actions">
+        <button class="btn primary wide" id="updateBtn">检查更新</button>
         <button class="btn" id="diagnoseBtn">诊断</button>
         <button class="btn" id="copyDiagBtn">复制诊断</button>
-        <button class="btn" id="copyErrorBtn">复制错误</button>
-        <button class="btn danger wide" id="clearHistoryBtn">清空历史</button>
+        <button class="btn wide" id="copyErrorBtn">复制最近错误</button>
       </div>
       <div class="status-chip" id="configText"><span class="dot"></span><span>加载中...</span></div>
-      <div class="version-line"><span>当前版本 <b id="drawerVersion">%%APP_VERSION%%</b></span><button class="link-btn" id="drawerUpdateBtn" type="button">检查更新</button></div>
+      <div class="version-line"><span>当前版本 <b id="drawerVersion">%%APP_VERSION%%</b></span></div>
       <div class="update-card hidden" id="updatePanel"></div>
       <div class="diagnostics hidden" id="diagnosticsPanel"></div>
       <details class="raw"><summary>原始响应</summary><pre id="raw">{}</pre></details>
-    </section>
+      </div>
+    </details>
   </div>
 </aside>
 
@@ -1068,7 +1249,11 @@ const state = {
   wizardDismissed: false,
   updateInfo: null,
   updateBusy: false,
-  updateApplied: false
+  updateApplied: false,
+  activeController: null,
+  resultBatches: {},
+  requestBatches: {},
+  nextBatchId: 1
 };
 
 const messages = qs("messages");
@@ -1130,6 +1315,8 @@ function setBusy(value) {
     el.disabled = value;
   }
   qs("sendBtn").textContent = value ? "生成中" : "生成";
+  qs("generationStatus").classList.toggle("hidden", !value);
+  renderConfig();
 }
 
 function scrollBottom() {
@@ -1138,11 +1325,17 @@ function scrollBottom() {
 
 function humanError(message) {
   const text = String(message || "");
-  if (/504|Gateway Timeout/i.test(text)) return text + "\n处理建议：网关或 CDN 等待时间不够，联系管理员检查回源超时。";
-  if (/401|403|key|API Key/i.test(text)) return text + "\n处理建议：检查接口密钥是否填写或有效。";
-  if (/model|模型/i.test(text)) return text + "\n处理建议：确认模型名称是否被中转支持。";
-  if (/abort|timeout|超时/i.test(text)) return text + "\n处理建议：图片生成较慢时，确认本地和中转网关超时都大于 240 秒。";
-  return text;
+  if (/已停止等待/i.test(text)) return "已停止在页面中等待。接口可能仍在后台处理这次请求，请稍后查看最近生成，暂时不要重复提交。";
+  if (/401|invalid.*key|incorrect.*key|API Key|接口密钥/i.test(text)) return "接口密钥不可用。请打开设置，重新填写接口密钥后点击“测试连接”。";
+  if (/403|forbidden/i.test(text)) return "接口拒绝了这次请求。请检查接口密钥权限、账户余额或接口地址。";
+  if (/429|too many|rate limit|频繁|限流/i.test(text)) return "请求过于频繁，接口暂时限流。请等待一会儿再试，避免连续点击生成。";
+  if (/413|too large|过大|超过.*MB/i.test(text)) return "上传图片太大。请压缩图片、减少参考图数量后重试。";
+  if (/model|模型/i.test(text)) return "当前接口不支持这个模型。请在高级设置中检查模型名称。\n\n详细信息：" + text;
+  if (/504|Gateway Timeout/i.test(text)) return "接口网关等待超时。图片可能需要更久才能生成，请联系接口提供方把网关或 CDN 超时提高到 240 秒以上。\n\n详细信息：" + text;
+  if (/abort|timeout|超时/i.test(text)) return "图片生成等待超时。请检查网络，或确认接口网关的等待时间已设置为 240 秒以上。\n\n详细信息：" + text;
+  if (/Failed to fetch|连接.*失败|无法连接|actively refused/i.test(text)) return "无法连接到接口。请检查网络和接口地址，然后在设置中点击“测试连接”。";
+  if (/非 JSON/i.test(text)) return "接口返回了无法识别的内容，可能是网关错误页面。请稍后重试或检查接口地址。\n\n详细信息：" + text;
+  return text || "生成失败，请检查设置后重试。";
 }
 
 function commonPayload() {
@@ -1200,10 +1393,13 @@ async function wizardSave(mock = false) {
     return;
   }
   try {
+    qs("wizardSaveBtn").textContent = "保存中";
     await saveConfig(true);
     closeWizard();
     showToast(mock ? "演示模式已开启，可以先体验界面。" : "配置已保存，可以开始生成。");
-  } catch {}
+  } catch {} finally {
+    qs("wizardSaveBtn").textContent = "保存并开始";
+  }
 }
 
 function optionPayload() {
@@ -1214,6 +1410,37 @@ function optionPayload() {
     background: qs("backgroundInput").value,
     output_format: qs("outputFormatInput").value
   });
+}
+
+function formatBytes(bytes) {
+  let value = Number(bytes || 0);
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function qualityLabel(value) {
+  return ({ high: "高清", medium: "标准", low: "快速", auto: "自动", "": "默认" })[value] || value;
+}
+
+function renderOptionSummary() {
+  const count = Number(qs("countInput").value || 1);
+  qs("composerConfigSummary").textContent = `${count} 张 · ${qualityLabel(qs("qualityInput").value)}`;
+  for (const button of document.querySelectorAll(".size-preset")) {
+    button.classList.toggle("active", button.dataset.size === qs("sizeInput").value);
+  }
+}
+
+function applyHistoryOptions(item) {
+  if (!item) return;
+  if (item.model) qs("model").value = item.model;
+  if (item.size) qs("sizeInput").value = item.size;
+  if (item.quality !== undefined) qs("qualityInput").value = item.quality || "";
+  if (item.background !== undefined) qs("backgroundInput").value = item.background || "";
+  if (item.output_format !== undefined) qs("outputFormatInput").value = item.output_format || "";
+  renderOptionSummary();
+  renderConfig();
 }
 
 function addMessage(role, html) {
@@ -1274,8 +1501,10 @@ function renderFiles() {
     : "直接输入文字即可生图 · Enter 生成，Shift+Enter 换行";
 }
 
-function clearSelectedFiles() {
-  for (const item of state.files) URL.revokeObjectURL(item.url);
+function clearSelectedFiles(preserveUrls = false) {
+  if (!preserveUrls) {
+    for (const item of state.files) URL.revokeObjectURL(item.url);
+  }
   state.files = [];
   renderFiles();
 }
@@ -1307,21 +1536,21 @@ function attachmentGrid(items) {
   return `<div class="attachment-grid">${items.map(item => `<img src="${attr(item.url)}" alt="${attr(item.file ? item.file.name : "参考图")}">`).join("")}</div>`;
 }
 
-async function requestJSON(path, payload) {
+async function requestJSON(path, payload, options = {}) {
   rawEl.textContent = "{}";
-  setBusy(true);
+  const generationRequest = Boolean(options.generation);
+  if (generationRequest) setBusy(true);
   setProgress(10);
   const started = Date.now();
-  let lastNotice = 0;
   const timer = setInterval(() => {
     const seconds = Math.floor((Date.now() - started) / 1000);
     setProgress(Math.min(90, 10 + seconds / Math.max(1, state.timeoutSec) * 76));
-    if (seconds >= 12 && seconds % 15 === 0 && seconds !== lastNotice) {
-      lastNotice = seconds;
-      showToast(`正在生成，已等待 ${seconds} 秒`);
+    if (generationRequest) {
+      qs("generationTimer").textContent = `已等待 ${seconds} 秒，请不要关闭窗口`;
     }
   }, 1000);
   const controller = new AbortController();
+  if (generationRequest) state.activeController = controller;
   const abortTimer = setTimeout(() => controller.abort(), (state.timeoutSec + 20) * 1000);
 
   try {
@@ -1342,14 +1571,21 @@ async function requestJSON(path, payload) {
     setProgress(100);
     return body;
   } catch (error) {
-    const message = humanError(error.name === "AbortError" ? "浏览器等待超时，已断开。" : (error.message || String(error)));
+    const abortedByUser = Boolean(generationRequest && controller.signal.aborted && options.userAbort && options.userAbort());
+    const rawMessage = error.name === "AbortError"
+      ? (abortedByUser ? "已停止等待。" : "浏览器等待超时，已断开。")
+      : (error.message || String(error));
+    const message = humanError(rawMessage);
     state.lastError = message + "\n\n" + rawEl.textContent;
     showToast(message);
     throw new Error(message);
   } finally {
     clearInterval(timer);
     clearTimeout(abortTimer);
-    setBusy(false);
+    if (generationRequest) {
+      state.activeController = null;
+      setBusy(false);
+    }
     setTimeout(() => setProgress(0), 900);
   }
 }
@@ -1358,8 +1594,11 @@ function imageResult(images, meta = {}) {
   images = arr(images).filter(item => item && (item.local_url || item.src));
   state.currentImages = images;
   if (!images.length) return "请求完成，但没有可显示图片。";
+  const batchId = `batch-${state.nextBatchId++}`;
+  state.resultBatches[batchId] = images;
+  state.requestBatches[batchId] = meta.request || state.lastRequest || null;
   const title = meta.history ? "历史结果" : "生成完成";
-  const actions = images.length > 1 ? `<button class="small-btn" onclick="downloadAllImages()">下载全部</button>` : "";
+  const actions = images.length > 1 ? `<button class="small-btn" onclick="downloadAllImages('${batchId}')">下载全部</button>` : "";
   return `
     <div class="result-head">
       <div><strong>${title}</strong><br><span>共 ${images.length} 张，点击图片下方按钮可下载或打开。</span></div>
@@ -1371,8 +1610,10 @@ function imageResult(images, meta = {}) {
         return `<div class="image-card">
           <img src="${attr(src)}" alt="生成结果 ${index + 1}">
           <div class="image-actions">
-            <button onclick="downloadImage(${index})">下载</button>
-            <a href="${attr(src)}" target="_blank" rel="noreferrer">打开</a>
+            <button onclick="downloadImage('${batchId}',${index})">下载</button>
+            <button onclick="editResultImage('${batchId}',${index})">继续修改</button>
+            <a href="${attr(src)}" target="_blank" rel="noreferrer">查看大图</a>
+            <button onclick="reuseCurrentPrompt('${batchId}')">再次生成</button>
           </div>
         </div>`;
       }).join("")}
@@ -1383,15 +1624,17 @@ function imageResult(images, meta = {}) {
 
 function loadingHtml(filesCount) {
   const mode = filesCount ? `正在参考 ${filesCount} 张图片生成` : "正在生成图片";
-  return `<span class="typing"><span class="spinner"></span>${mode}，通常需要几十秒，请不要关闭窗口。</span>`;
+  return `<span class="typing"><span class="spinner"></span>${mode}，通常需要几十秒。你可以在输入框下方查看等待时间。</span>`;
 }
 
-function errorHtml(message) {
+function errorHtml(message, request = null) {
+  const requestId = request ? `request-${state.nextBatchId++}` : "";
+  if (requestId) state.requestBatches[requestId] = request;
   return `<div class="error-card">
     <b>生成失败</b>
     <pre>${esc(message)}</pre>
     <div class="result-tools">
-      <button class="small-btn" onclick="retryLast()">重试这次生成</button>
+      ${requestId ? `<button class="small-btn" onclick="retryRequest('${requestId}')">重试这次生成</button>` : ""}
       <button class="small-btn" onclick="openDrawer()">检查设置</button>
       <button class="small-btn" onclick="copyLastError()">复制错误</button>
     </div>
@@ -1411,7 +1654,12 @@ function captureRequest() {
 
 async function submitRequest(request, fromRetry = false) {
   if (state.busy) return;
+  request.userAborted = false;
   state.lastRequest = request;
+  setBusy(true);
+  for (const item of request.files) {
+    if (!state.messageUrls.includes(item.url)) state.messageUrls.push(item.url);
+  }
   const userMeta = request.files.length ? `<div class="meta">已上传 ${request.files.length} 张参考图</div>` : "";
   addMessage("user", `${esc(request.prompt)}${attachmentGrid(request.files)}${userMeta}`);
   const assistantMessage = addMessage("assistant", loadingHtml(request.files.length));
@@ -1423,18 +1671,60 @@ async function submitRequest(request, fromRetry = false) {
       path = "/api/edit";
       payload.images = await filesToDataURLs(request.files);
     }
-    const body = await requestJSON(path, payload);
-    updateMessage(assistantMessage, imageResult(body.images));
+    qs("generationTitle").textContent = request.files.length ? `正在参考 ${request.files.length} 张图片生成` : "正在生成图片";
+    qs("generationTimer").textContent = "已等待 0 秒，请不要关闭窗口";
+    const body = await requestJSON(path, payload, { generation: true, userAbort: () => request.userAborted });
+    updateMessage(assistantMessage, imageResult(body.images, { request }));
     qs("promptInput").value = "";
     autoSizePrompt();
     if (!fromRetry || request.files === state.files) {
-      clearSelectedFiles();
+      clearSelectedFiles(true);
     }
     await loadHistory();
   } catch (error) {
-    updateMessage(assistantMessage, errorHtml(error.message || String(error)));
+    updateMessage(assistantMessage, errorHtml(error.message || String(error), request));
+    if (request.userAborted) {
+      setBusy(true);
+      qs("generationTitle").textContent = "后台请求仍在处理中";
+      qs("generationTimer").textContent = "本地服务恢复后会自动刷新最近生成";
+      qs("stopBtn").disabled = true;
+      try {
+        await fetch("/api/health", { cache: "no-store" });
+        await loadHistory();
+        updateMessage(assistantMessage, `<div class="error-card"><b>页面已停止等待</b><pre>后台请求已经结束。请在左侧“最近生成”中查看最终结果，再决定是否重试。</pre></div>`);
+      } catch {
+        showToast("后台请求状态读取失败，请稍后刷新页面查看最近生成。");
+      } finally {
+        qs("stopBtn").disabled = false;
+        setBusy(false);
+      }
+    }
+  } finally {
+    if (!request.userAborted && state.busy) setBusy(false);
   }
 }
+
+window.stopGeneration = () => {
+  if (!state.busy || !state.activeController || !state.lastRequest) return;
+  state.lastRequest.userAborted = true;
+  state.activeController.abort();
+};
+
+window.reuseCurrentPrompt = batchId => {
+  const request = state.requestBatches[batchId] || state.lastRequest;
+  if (!request) return;
+  qs("promptInput").value = request.prompt || "";
+  if (request.options) {
+    if (request.options.size) qs("sizeInput").value = request.options.size;
+    if (request.options.n) qs("countInput").value = String(request.options.n);
+    if (request.options.quality !== undefined) qs("qualityInput").value = request.options.quality || "";
+    if (request.options.background !== undefined) qs("backgroundInput").value = request.options.background || "";
+    if (request.options.output_format !== undefined) qs("outputFormatInput").value = request.options.output_format || "";
+    renderOptionSummary();
+  }
+  autoSizePrompt();
+  qs("promptInput").focus();
+};
 
 async function send() {
   try {
@@ -1444,12 +1734,13 @@ async function send() {
   }
 }
 
-window.retryLast = async () => {
-  if (!state.lastRequest) {
+window.retryRequest = async requestId => {
+  const request = state.requestBatches[requestId];
+  if (!request) {
     showToast("没有可重试的请求。");
     return;
   }
-  await submitRequest(state.lastRequest, true);
+  await submitRequest(request, true);
 };
 
 function renderConfig() {
@@ -1459,16 +1750,22 @@ function renderConfig() {
   const mock = qs("mockMode").value === "1" || cfg.mock;
   const hasKey = Boolean(cfg.has_api_key || tempKey || mock);
   const persistedReady = Boolean(cfg.has_api_key || cfg.mock);
-  const statusText = mock ? "演示模式" : hasKey ? "已就绪" : "未配置";
-  const dotClass = mock ? "warn" : hasKey ? "" : "bad";
+  const statusText = state.busy ? "正在生成" : mock ? "演示模式" : hasKey ? "接口已配置" : "接口未配置";
+  const dotClass = state.busy ? "warn" : mock ? "warn" : hasKey ? "" : "bad";
   const base = qs("baseUrl").value || cfg.base_url || "";
   const model = qs("model").value || cfg.model || "";
 
   qs("keyStatus").innerHTML = `<span class="dot ${dotClass}"></span><span>${statusText}</span>`;
-  qs("topStatus").innerHTML = `<span class="dot ${dotClass}"></span><span>${statusText} · ${esc(model || "未选择模型")}</span>`;
+  qs("topStatus").innerHTML = `<span class="dot ${dotClass}"></span><span>${statusText}</span>`;
   qs("baseStatus").innerHTML = `<span class="dot"></span><span>${esc(base)}</span>`;
   qs("modelLabel").textContent = model;
   qs("configText").innerHTML = `<span class="dot ${dotClass}"></span><span>${mock ? "演示模式" : "真实请求"} · 超时 ${state.timeoutSec}s · ${hasKey ? "接口可用" : "缺少密钥"}</span>`;
+  qs("connectionStatus").className = `connection-status ${hasKey ? "ok" : ""}`;
+  qs("connectionStatus").textContent = mock
+    ? "演示模式已开启，不会调用真实接口，也不会消耗额度。"
+    : hasKey
+      ? `接口配置已保存。建议修改后点击“测试连接”。`
+      : "还没有接口密钥，请填写后保存并测试连接。";
   qs("setupNotice").classList.toggle("hidden", hasKey);
   if (!hasKey) openWizard();
   if (persistedReady && !qs("setupWizard").classList.contains("hidden")) closeWizard();
@@ -1486,6 +1783,7 @@ async function loadConfig() {
     qs("timeoutSecInput").value = state.timeoutSec;
     qs("mockMode").value = cfg.mock ? "1" : "0";
     renderConfig();
+    renderOptionSummary();
   } catch {
     showToast("配置读取失败");
   }
@@ -1528,6 +1826,7 @@ window.historyKey = (event, index) => {
 };
 
 let openedHistoryPrompt = "";
+let openedHistoryItem = null;
 window.openHistory = index => {
   const item = state.historyItems[index];
   if (!item) return;
@@ -1535,16 +1834,31 @@ window.openHistory = index => {
   messages.innerHTML = "";
   hero.classList.add("hidden");
   openedHistoryPrompt = item.prompt || "";
+  openedHistoryItem = item;
+  applyHistoryOptions(item);
   addMessage("user", `${esc(openedHistoryPrompt)}<div class="meta">历史记录 · ${esc(item.time || "")}</div>`);
   const images = arr(item.images);
   if (item.status === "success" && images.length) {
-    addMessage("assistant", imageResult(images, { history: true }));
+    const historyRequest = {
+      prompt: openedHistoryPrompt,
+      files: [],
+      options: compact({
+        size: item.size || "",
+        n: Number(item.image_count || 1),
+        quality: item.quality || "",
+        background: item.background || "",
+        output_format: item.output_format || ""
+      }),
+      common: compact({ model: item.model || "" })
+    };
+    addMessage("assistant", imageResult(images, { history: true, request: historyRequest }));
   } else {
     addMessage("assistant", errorHtml(item.error || "这条历史没有可显示图片。"));
   }
 };
 
 window.reusePromptFromOpenHistory = () => {
+  applyHistoryOptions(openedHistoryItem);
   qs("promptInput").value = openedHistoryPrompt || "";
   autoSizePrompt();
   qs("promptInput").focus();
@@ -1553,6 +1867,8 @@ window.reusePromptFromOpenHistory = () => {
 
 async function saveConfig(throwOnError = false) {
   try {
+    qs("saveConfigBtn").textContent = "保存中";
+    qs("saveConfigBtn").disabled = true;
     const body = await requestJSON("/api/config/save", configPayload());
     state.config = body.config;
     state.timeoutSec = body.config.timeout_sec || state.timeoutSec;
@@ -1563,6 +1879,9 @@ async function saveConfig(throwOnError = false) {
   } catch (error) {
     if (throwOnError) throw error;
     return false;
+  } finally {
+    qs("saveConfigBtn").textContent = "保存";
+    qs("saveConfigBtn").disabled = false;
   }
 }
 
@@ -1597,7 +1916,6 @@ function renderUpdatePanel(info, message = "") {
     panel.innerHTML = `<b>更新检查失败</b><span>${esc(message || "请稍后再试。")}</span>`;
     qs("updateBtn").textContent = "重新检查";
     qs("sideUpdateBtn").textContent = "重新检查";
-    qs("drawerUpdateBtn").textContent = "重新检查";
     return;
   }
   state.updateInfo = info;
@@ -1606,12 +1924,10 @@ function renderUpdatePanel(info, message = "") {
     panel.innerHTML = `<b>发现新版本 ${esc(info.latest_version)}</b><span>当前版本 ${esc(info.current_version)}，点击“立即更新”会自动下载并覆盖程序文件，不会覆盖 config.ini、outputs、logs。</span>`;
     qs("updateBtn").textContent = "立即更新";
     qs("sideUpdateBtn").textContent = "有可用更新";
-    qs("drawerUpdateBtn").textContent = "立即更新";
   } else {
     panel.innerHTML = `<b>已是最新版</b><span>当前版本 ${esc(info.current_version)}，暂时没有可用更新。</span>`;
     qs("updateBtn").textContent = "检查更新";
     qs("sideUpdateBtn").textContent = "已是最新版";
-    qs("drawerUpdateBtn").textContent = "检查更新";
   }
 }
 
@@ -1620,7 +1936,6 @@ async function checkUpdate() {
   state.updateBusy = true;
   qs("updateBtn").textContent = "检查中";
   qs("sideUpdateBtn").textContent = "检查中";
-  qs("drawerUpdateBtn").textContent = "检查中";
   try {
     const response = await fetch("/api/update/check", { cache: "no-store" });
     const body = await response.json();
@@ -1645,7 +1960,6 @@ async function applyUpdate() {
   state.updateBusy = true;
   qs("updateBtn").textContent = "更新中";
   qs("sideUpdateBtn").textContent = "更新中";
-  qs("drawerUpdateBtn").textContent = "更新中";
   try {
     const body = await requestJSON("/api/update/apply", {});
     qs("updatePanel").classList.remove("hidden");
@@ -1654,7 +1968,6 @@ async function applyUpdate() {
     state.updateInfo = body.updated ? null : (body.update || null);
     qs("updateBtn").textContent = body.updated ? "重启后生效" : "检查更新";
     qs("sideUpdateBtn").textContent = body.updated ? "重启后生效" : "检查更新";
-    qs("drawerUpdateBtn").textContent = body.updated ? "重启后生效" : "检查更新";
     showToast(body.message || "更新完成");
   } catch (error) {
     renderUpdatePanel(null, error.message || String(error));
@@ -1697,8 +2010,43 @@ async function clearHistory() {
   }
 }
 
-window.downloadImage = index => {
-  const item = state.currentImages[index];
+async function loadStorage() {
+  try {
+    const response = await fetch("/api/storage", { cache: "no-store" });
+    const body = await response.json();
+    if (!response.ok || body.error) throw new Error((body.error && body.error.message) || `HTTP ${response.status}`);
+    qs("storageSummary").innerHTML = `
+      <div class="storage-stat"><b>生成图片</b><span>${Number(body.images && body.images.files || 0)} 个文件 · ${formatBytes(body.images && body.images.bytes)}</span></div>
+      <div class="storage-stat"><b>运行日志</b><span>${Number(body.logs && body.logs.files || 0)} 个文件 · ${formatBytes(body.logs && body.logs.bytes)}</span></div>
+      <div class="storage-stat"><b>历史记录</b><span>${Number(body.history_records || 0)} 条</span></div>
+      <div class="storage-stat"><b>合计占用</b><span>${formatBytes(body.total_bytes)}</span></div>`;
+  } catch (error) {
+    qs("storageSummary").innerHTML = `<div class="storage-stat"><b>读取失败</b><span>${esc(error.message || error)}</span></div>`;
+  }
+}
+
+async function clearStorage(target) {
+  const prompts = {
+    history: "确认只清空历史记录？已经保存的图片不会删除。",
+    images: "确认删除所有已生成图片和历史记录？此操作无法撤销。",
+    logs: "确认清空运行日志？排查旧问题时将无法再查看这些日志。"
+  };
+  if (!confirm(prompts[target] || "确认清理？")) return;
+  try {
+    await postSimple("/api/storage/clear", { target });
+    if (target === "history" || target === "images") {
+      resetChat();
+      await loadHistory();
+    }
+    await loadStorage();
+    showToast(target === "images" ? "图片和历史已清空" : target === "logs" ? "日志已清空" : "历史已清空");
+  } catch (error) {
+    showToast(`清理失败：${error.message || error}`);
+  }
+}
+
+window.downloadImage = (batchId, index) => {
+  const item = arr(state.resultBatches[batchId])[index];
   if (!item) return;
   const src = item.local_url || item.src;
   if (!src) return;
@@ -1710,8 +2058,57 @@ window.downloadImage = index => {
   link.remove();
 };
 
-window.downloadAllImages = () => {
-  state.currentImages.forEach((_, index) => setTimeout(() => window.downloadImage(index), index * 180));
+window.downloadAllImages = batchId => {
+  arr(state.resultBatches[batchId]).forEach((_, index) => setTimeout(() => window.downloadImage(batchId, index), index * 180));
+};
+
+async function normalizeResultBlob(blob, filename) {
+  if (blob.type !== "image/svg+xml" && !/\.svg$/i.test(filename || "")) {
+    return { blob, filename: filename || "image.png", type: blob.type || "image/png" };
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 1024;
+  const context = canvas.getContext("2d");
+  const gradient = context.createRadialGradient(280, 190, 30, 520, 520, 850);
+  gradient.addColorStop(0, "#f5f5f5");
+  gradient.addColorStop(0.42, "#4a4a4d");
+  gradient.addColorStop(1, "#050505");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "rgba(255,255,255,.55)";
+  context.lineWidth = 3;
+  context.strokeRect(88, 88, 848, 848);
+  context.fillStyle = "#fff";
+  context.font = "700 58px Segoe UI, sans-serif";
+  context.fillText("ImageBot 演示图片", 132, 210);
+  context.fillStyle = "#d4d4d4";
+  context.font = "32px Microsoft YaHei, sans-serif";
+  context.fillText("用于体验继续修改，不会消耗接口额度", 132, 278);
+  const png = await new Promise((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("演示图片转换失败")), "image/png"));
+  return { blob: png, filename: (filename || "image.svg").replace(/\.svg$/i, ".png"), type: "image/png" };
+}
+
+window.editResultImage = async (batchId, index) => {
+  const item = arr(state.resultBatches[batchId])[index];
+  if (!item) return;
+  const src = item.local_url || item.src;
+  if (!src) return;
+  try {
+    const response = await fetch(src);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    const normalized = await normalizeResultBlob(blob, item.filename || "image.png");
+    const file = new File([normalized.blob], normalized.filename, { type: normalized.type });
+    appendFiles([file]);
+    const request = state.requestBatches[batchId];
+    if (request && request.prompt) qs("promptInput").value = request.prompt;
+    autoSizePrompt();
+    qs("promptInput").focus();
+    showToast("已把这张图片加入参考图，可以继续描述怎么修改。");
+  } catch (error) {
+    showToast(`无法读取这张图片：${error.message || error}`);
+  }
 };
 
 async function copyText(text) {
@@ -1739,6 +2136,7 @@ window.copyLastError = async () => {
 function openDrawer() {
   qs("drawer").classList.add("open");
   qs("drawer").setAttribute("aria-hidden", "false");
+  loadStorage();
   updateScrim();
 }
 
@@ -1767,6 +2165,8 @@ function updateScrim() {
 window.openDrawer = openDrawer;
 
 function resetChat() {
+  for (const url of state.messageUrls) URL.revokeObjectURL(url);
+  state.messageUrls = [];
   messages.innerHTML = "";
   hero.classList.remove("hidden");
   state.currentImages = [];
@@ -1782,6 +2182,7 @@ function autoSizePrompt() {
 }
 
 qs("sendBtn").addEventListener("click", send);
+qs("stopBtn").addEventListener("click", window.stopGeneration);
 qs("promptInput").addEventListener("input", autoSizePrompt);
 qs("promptInput").addEventListener("keydown", event => {
   if (event.key === "Enter" && !event.shiftKey) {
@@ -1851,8 +2252,13 @@ qs("wizardTestBtn").addEventListener("click", async () => {
   }
   try {
     const body = await requestJSON("/api/test", commonPayload());
-    showToast(body.message || "连接测试完成");
-  } catch {}
+    qs("wizardConnectionStatus").className = "connection-status ok";
+    qs("wizardConnectionStatus").textContent = body.message || "连接成功，可以保存并开始使用。";
+    showToast(body.message || "连接测试成功");
+  } catch (error) {
+    qs("wizardConnectionStatus").className = "connection-status";
+    qs("wizardConnectionStatus").textContent = humanError(error.message || String(error));
+  }
 });
 qs("menuBtn").addEventListener("click", () => {
   if (qs("sidebar").classList.contains("open")) closeSidebar();
@@ -1875,14 +2281,19 @@ qs("diagnoseBtn").addEventListener("click", diagnose);
 qs("updateBtn").addEventListener("click", handleUpdateClick);
 qs("sideUpdateBtn").addEventListener("click", () => {
   openDrawer();
+  qs("maintenanceSettings").open = true;
   handleUpdateClick();
 });
-qs("drawerUpdateBtn").addEventListener("click", handleUpdateClick);
 qs("testBtn").addEventListener("click", async () => {
   try {
     const body = await requestJSON("/api/test", commonPayload());
+    qs("connectionStatus").className = "connection-status ok";
+    qs("connectionStatus").textContent = body.message || "连接成功，可以开始生成。";
     showToast(body.message || "连接测试完成");
-  } catch {}
+  } catch (error) {
+    qs("connectionStatus").className = "connection-status";
+    qs("connectionStatus").textContent = humanError(error.message || String(error));
+  }
 });
 qs("copyDiagBtn").addEventListener("click", async () => {
   if (!state.lastDiagnostics) {
@@ -1893,16 +2304,31 @@ qs("copyDiagBtn").addEventListener("click", async () => {
   showToast("诊断已复制");
 });
 qs("copyErrorBtn").addEventListener("click", window.copyLastError);
-qs("clearHistoryBtn").addEventListener("click", clearHistory);
+qs("clearHistoryBtn").addEventListener("click", () => clearStorage("history"));
+qs("clearImagesBtn").addEventListener("click", () => clearStorage("images"));
+qs("clearLogsBtn").addEventListener("click", () => clearStorage("logs"));
+qs("moreSettingsBtn").addEventListener("click", () => {
+  openDrawer();
+  qs("advancedSettings").open = true;
+});
 
-for (const id of ["baseUrl", "apiKey", "model", "timeoutSecInput", "mockMode"]) {
+for (const button of document.querySelectorAll(".size-preset")) {
+  button.addEventListener("click", () => {
+    qs("sizeInput").value = button.dataset.size || "1024x1024";
+    renderOptionSummary();
+  });
+}
+
+for (const id of ["baseUrl", "apiKey", "model", "timeoutSecInput", "mockMode", "sizeInput", "countInput", "qualityInput", "backgroundInput", "outputFormatInput"]) {
   qs(id).addEventListener("input", () => {
     state.timeoutSec = Number(qs("timeoutSecInput").value || state.timeoutSec || 240);
     renderConfig();
+    renderOptionSummary();
   });
 }
 
 renderFiles();
+renderOptionSummary();
 loadConfig();
 loadHistory();
 </script>
