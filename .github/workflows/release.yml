@@ -1,4 +1,4 @@
-name: Release
+name: 发布新版
 
 on:
   push:
@@ -9,139 +9,72 @@ permissions:
   contents: write
 
 jobs:
-  package:
+  release:
     runs-on: windows-latest
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout
+      - name: 获取源码
         uses: actions/checkout@v4
 
-      - name: Check version tag
+      - name: 准备 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 自动测试
         shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
-            throw "Release tag must look like v1.2.3. Current: $tag"
-          }
+        run: ./scripts/Test-ImageBot.ps1
 
-      - name: Scan committed files for API keys
+      - name: 生成发布包
         shell: pwsh
-        run: |
-          $hits = @()
-          $files = Get-ChildItem -File -Recurse -Force |
-            Where-Object {
-              $_.FullName -notmatch '\\.git\\' -and
-              $_.FullName -notmatch '\\outputs\\' -and
-              $_.FullName -notmatch '\\logs\\' -and
-              $_.Name -notlike '*.zip'
-            }
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: ./scripts/New-ReleasePackage.ps1 -Tag "${{ github.ref_name }}" -OutputDirectory ./dist
 
-          foreach ($file in $files) {
-            $lineNo = 0
-            foreach ($line in Get-Content -LiteralPath $file.FullName -Encoding UTF8 -ErrorAction SilentlyContinue) {
-              $lineNo++
-              if ($line -match 'sk-[A-Za-z0-9_-]{12,}') {
-                $hits += "$($file.FullName):$lineNo"
-              }
-            }
-          }
+      - name: 保存构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImageBot-${{ github.ref_name }}
+          path: |
+            dist/ImageBot-${{ github.ref_name }}.zip
+            dist/ImageBot-${{ github.ref_name }}.zip.sha256
+          if-no-files-found: error
 
-          if ($hits.Count -gt 0) {
-            $hits | ForEach-Object { Write-Error $_ }
-            throw "Possible API key found. Refusing to publish."
-          }
-
-      - name: Build clean zip
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $stage = Join-Path $PWD "package"
-          $zip = Join-Path $PWD "ImageBot-$tag.zip"
-          New-Item -ItemType Directory -Path $stage -Force | Out-Null
-
-          $files = @(
-            "openai_images_webui_no_python_config.ps1",
-            "webui_index.html",
-            "README.md",
-            "LICENSE",
-            "config.example.ini",
-            "启动图片WebUI-独立Config版.bat"
-          )
-
-          foreach ($file in $files) {
-            Copy-Item -LiteralPath $file -Destination (Join-Path $stage $file) -Force
-          }
-
-          Copy-Item -LiteralPath "config.example.ini" -Destination (Join-Path $stage "config.ini") -Force
-
-          @'
-          ImageBot 使用说明：
-          1. 解压后双击“启动图片WebUI-独立Config版.bat”。
-          2. 第一次打开时填写接口密钥。
-          3. 在页面底部输入内容，点击“生成”。
-          4. 图片保存在本地，可在“设置 - 本地文件”中查看和清理。
-          5. 本发布包不包含作者的接口密钥、历史记录、日志或已生成图片。
-          '@ | Set-Content -LiteralPath (Join-Path $stage "发布说明.txt") -Encoding UTF8
-
-          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal -Force
-          "ZIP_PATH=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "ZIP_NAME=ImageBot-$tag.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Verify package has no API key
-        shell: pwsh
-        run: |
-          $verify = Join-Path $PWD "verify"
-          New-Item -ItemType Directory -Path $verify -Force | Out-Null
-          Expand-Archive -LiteralPath $env:ZIP_PATH -DestinationPath $verify -Force
-
-          $configKey = Get-Content -LiteralPath (Join-Path $verify "config.ini") -Encoding UTF8 |
-            Where-Object { $_ -match '^\s*OPENAI_API_KEY\s*=' } |
-            Select-Object -First 1
-          if ($configKey -ne "OPENAI_API_KEY=") {
-            throw "Release config.ini must contain a blank OPENAI_API_KEY."
-          }
-
-          $hits = @()
-          foreach ($file in Get-ChildItem -LiteralPath $verify -File -Recurse -Force) {
-            $lineNo = 0
-            foreach ($line in Get-Content -LiteralPath $file.FullName -Encoding UTF8 -ErrorAction SilentlyContinue) {
-              $lineNo++
-              if ($line -match 'sk-[A-Za-z0-9_-]{12,}') {
-                $hits += "$($file.FullName):$lineNo"
-              }
-            }
-          }
-          if ($hits.Count -gt 0) {
-            $hits | ForEach-Object { Write-Error $_ }
-            throw "Possible API key found in package."
-          }
-
-      - name: Publish GitHub Release
+      - name: 发布到 GitHub
         uses: softprops/action-gh-release@v2
         with:
           name: ImageBot ${{ github.ref_name }}
-          files: ${{ env.ZIP_PATH }}
+          files: |
+            dist/ImageBot-${{ github.ref_name }}.zip
+            dist/ImageBot-${{ github.ref_name }}.zip.sha256
           body: |
             # ImageBot ${{ github.ref_name }} 更新说明
 
+            ## 本版更新
+
+            - 新增 `ImageBot.exe`，双击即可启动，不再显示黑色命令窗口。
+            - 新增 Windows 托盘菜单，可重新打开页面、重新启动服务或完全退出。
+            - 自动更新会校验 SHA-256，更新失败时自动恢复原文件。
+            - 设置中新增“恢复上一版本”，更新后遇到问题可以一键恢复。
+            - 新增自动化测试，发布前会检查程序语法、生成接口、历史记录、本地存储、更新恢复和退出流程。
+
             ## 开始使用
 
-            1. 下载下面的 `ImageBot-${{ github.ref_name }}.zip`
-            2. 解压压缩包
-            3. 双击 `启动图片WebUI-独立Config版.bat`
-            4. 第一次打开时填写接口密钥
-            5. 在底部输入想生成的图片内容，点击 `生成`
+            1. 下载 `ImageBot-${{ github.ref_name }}.zip`。
+            2. 完整解压压缩包。
+            3. 双击 `ImageBot.exe`。
+            4. 第一次打开时填写接口密钥并保存。
+            5. 输入想生成的画面，也可以上传参考图片，然后点击“生成”。
 
-            ## 可以做什么
+            ## 旧版本升级
 
-            - 输入文字生成图片。
-            - 上传图片后继续修改。
-            - 下载、查看大图和再次生成。
-            - 在设置中检查更新和管理本地文件。
+            从 `v1.3.0` 使用页面内更新，可以升级核心程序，但旧版更新器不会下载本次首次新增的 `ImageBot.exe`。需要无黑窗启动时，请手动下载本版压缩包并重新解压；原来的 `config.ini` 可以继续使用。
 
-            ## 重要说明
+            ## 说明
 
-            - 接口密钥只保存在使用本工具的电脑上。
-            - 发布包不包含作者的接口密钥、历史记录、日志或已生成图片。
-            - 图片生成费用和服务稳定性由接口服务提供方决定。
-          generate_release_notes: true
+            - 更新与恢复不会删除 `config.ini`、历史记录、日志或已生成图片。
+            - `ImageBot-${{ github.ref_name }}.zip.sha256` 用于核对下载文件完整性。
+            - 未配置 Windows 代码签名证书时，系统可能在首次运行时显示安全提示。
+            - 发布包不包含作者的接口密钥或本地生成记录。

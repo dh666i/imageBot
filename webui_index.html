@@ -1217,6 +1217,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
       <div class="drawer-details">
       <div class="admin-actions">
         <button class="btn primary wide" id="updateBtn">检查更新</button>
+        <button class="btn wide hidden" id="rollbackBtn">恢复上一版本</button>
         <button class="btn" id="diagnoseBtn">诊断</button>
         <button class="btn" id="copyDiagBtn">复制诊断</button>
         <button class="btn wide" id="copyErrorBtn">复制最近错误</button>
@@ -1248,8 +1249,10 @@ const state = {
   messageUrls: [],
   wizardDismissed: false,
   updateInfo: null,
+  rollbackInfo: null,
   updateBusy: false,
   updateApplied: false,
+  rollbackApplied: false,
   activeController: null,
   resultBatches: {},
   requestBatches: {},
@@ -1931,6 +1934,26 @@ function renderUpdatePanel(info, message = "") {
   }
 }
 
+function renderRollbackStatus(info) {
+  state.rollbackInfo = info && info.rollback_available ? info : null;
+  const button = qs("rollbackBtn");
+  button.classList.toggle("hidden", !state.rollbackInfo || state.rollbackApplied);
+  button.textContent = state.rollbackInfo && state.rollbackInfo.previous_version
+    ? `恢复上一版本 ${state.rollbackInfo.previous_version}`
+    : "恢复上一版本";
+}
+
+async function loadUpdateStatus() {
+  try {
+    const response = await fetch("/api/update/status", { cache: "no-store" });
+    const body = await response.json();
+    if (!response.ok || body.error) throw new Error((body.error && body.error.message) || body.message || `HTTP ${response.status}`);
+    renderRollbackStatus(body);
+  } catch {
+    renderRollbackStatus(null);
+  }
+}
+
 async function checkUpdate() {
   if (state.updateBusy) return;
   state.updateBusy = true;
@@ -1965,9 +1988,11 @@ async function applyUpdate() {
     qs("updatePanel").classList.remove("hidden");
     qs("updatePanel").innerHTML = `<b>${body.updated ? "更新完成" : "无需更新"}</b><span>${esc(body.message || "")}</span>`;
     state.updateApplied = Boolean(body.updated);
+    state.rollbackApplied = false;
     state.updateInfo = body.updated ? null : (body.update || null);
     qs("updateBtn").textContent = body.updated ? "重启后生效" : "检查更新";
     qs("sideUpdateBtn").textContent = body.updated ? "重启后生效" : "检查更新";
+    if (body.updated) await loadUpdateStatus();
     showToast(body.message || "更新完成");
   } catch (error) {
     renderUpdatePanel(null, error.message || String(error));
@@ -1976,9 +2001,41 @@ async function applyUpdate() {
   }
 }
 
+async function rollbackUpdate() {
+  if (!state.rollbackInfo || state.updateBusy) return;
+  const previousVersion = state.rollbackInfo.previous_version || "上一版本";
+  if (!confirm(`确定恢复到 ${previousVersion}？\n\n接口配置、历史记录和已生成图片不会受影响。恢复后需要重新启动 ImageBot。`)) return;
+  state.updateBusy = true;
+  qs("rollbackBtn").textContent = "正在恢复";
+  try {
+    const body = await requestJSON("/api/update/rollback", {});
+    if (!body.rolled_back) {
+      renderRollbackStatus(null);
+      showToast(body.message || "没有可恢复的上一版本");
+      return;
+    }
+    state.rollbackApplied = true;
+    state.updateApplied = false;
+    state.updateInfo = null;
+    renderRollbackStatus(null);
+    qs("updatePanel").classList.remove("hidden");
+    qs("updatePanel").innerHTML = `<b>已恢复上一版本</b><span>${esc(body.message || "请重新启动 ImageBot。")}</span>`;
+    qs("updateBtn").textContent = "重启后生效";
+    qs("sideUpdateBtn").textContent = "重启后生效";
+    showToast(body.message || "已恢复上一版本，请重新启动");
+  } catch (error) {
+    qs("updatePanel").classList.remove("hidden");
+    qs("updatePanel").innerHTML = `<b>恢复失败</b><span>${esc(error.message || String(error))}</span>`;
+    renderRollbackStatus(state.rollbackInfo);
+    showToast(`恢复失败：${error.message || error}`);
+  } finally {
+    state.updateBusy = false;
+  }
+}
+
 function handleUpdateClick() {
-  if (state.updateApplied) {
-    showToast("更新已完成，请重启后生效");
+  if (state.updateApplied || state.rollbackApplied) {
+    showToast("版本文件已经变更，请重新启动 ImageBot");
     return;
   }
   if (state.updateInfo && state.updateInfo.update_available) applyUpdate();
@@ -2137,6 +2194,7 @@ function openDrawer() {
   qs("drawer").classList.add("open");
   qs("drawer").setAttribute("aria-hidden", "false");
   loadStorage();
+  loadUpdateStatus();
   updateScrim();
 }
 
@@ -2279,6 +2337,7 @@ document.addEventListener("keydown", event => {
 qs("saveConfigBtn").addEventListener("click", () => saveConfig());
 qs("diagnoseBtn").addEventListener("click", diagnose);
 qs("updateBtn").addEventListener("click", handleUpdateClick);
+qs("rollbackBtn").addEventListener("click", rollbackUpdate);
 qs("sideUpdateBtn").addEventListener("click", () => {
   openDrawer();
   qs("maintenanceSettings").open = true;

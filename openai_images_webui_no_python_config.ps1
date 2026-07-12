@@ -46,8 +46,9 @@ function Read-ConfigFile([string]$path) {
 }
 
 $Config = Read-ConfigFile $ConfigPath
-$AppVersion = "v1.3.0"
+$AppVersion = "v1.4.0"
 $UpdateRepo = "dh666i/imageBot"
+$script:ShutdownRequested = $false
 
 function ConfigValue([string]$key, [string]$default) {
     if ($Config.ContainsKey($key)) {
@@ -112,7 +113,7 @@ function Apply-RuntimeConfigFromFile {
     $script:HostName = ConfigValue "IMAGE_WEBUI_HOST" "127.0.0.1"
     $script:Port = ConfigInt "IMAGE_WEBUI_PORT" 7861 1 65535
     $script:TimeoutSec = ConfigInt "IMAGE_WEBUI_TIMEOUT" 240 10 1800
-    $script:NoBrowser = ConfigBool "IMAGE_WEBUI_NO_BROWSER" $false
+    $script:NoBrowser = (ConfigBool "IMAGE_WEBUI_NO_BROWSER" $false) -or ($env:IMAGEBOT_LAUNCHER -eq "1")
     $script:SaveOutputs = ConfigBool "IMAGE_WEBUI_SAVE_OUTPUTS" $true
     $script:MockMode = ConfigBool "IMAGE_WEBUI_MOCK" $false
     $script:ForceResponseFormat = ConfigBool "IMAGE_WEBUI_FORCE_RESPONSE_FORMAT" $false
@@ -696,6 +697,7 @@ function Get-ConfigSnapshot {
     return [ordered]@{
         app = "GPT Image Web UI"
         version = $AppVersion
+        pid = $PID
         base_url = $BaseUrl
         base_url_raw = $BaseUrlRaw
         model = $DefaultModel
@@ -845,13 +847,24 @@ function Get-UpdateInfo {
     $assetName = ""
     $assetUrl = ""
     $assetSize = 0
+    $assetDigest = ""
+    $checksumUrl = ""
     if ($null -ne $asset) {
         $assetName = [string](Get-Prop $asset "name" "")
         $assetUrl = [string](Get-Prop $asset "browser_download_url" "")
         $assetSize = [int](Get-Prop $asset "size" 0)
+        $assetDigest = [string](Get-Prop $asset "digest" "")
+        foreach ($item in (Get-Prop $release "assets" @())) {
+            $name = [string](Get-Prop $item "name" "")
+            if ($name -eq "$assetName.sha256") {
+                $checksumUrl = [string](Get-Prop $item "browser_download_url" "")
+                break
+            }
+        }
     } else {
         $assetName = "ImageBot-$latest.zip"
         $assetUrl = "https://github.com/$UpdateRepo/releases/download/$latest/$assetName"
+        $checksumUrl = "$assetUrl.sha256"
     }
 
     $cmp = Compare-VersionText $latest $AppVersion
@@ -867,6 +880,8 @@ function Get-UpdateInfo {
         asset_name = $assetName
         asset_url = $assetUrl
         asset_size = $assetSize
+        asset_digest = $assetDigest
+        checksum_url = $checksumUrl
     }
 }
 
@@ -894,6 +909,124 @@ function Handle-UpdateCheck {
     return Get-UpdateInfo
 }
 
+function Get-UpdateFileNames {
+    return @(
+        "openai_images_webui_no_python_config.ps1",
+        "webui_index.html",
+        "README.md",
+        "LICENSE",
+        "config.example.ini",
+        "启动图片WebUI-独立Config版.bat",
+        "发布说明.txt",
+        "ImageBot.exe"
+    )
+}
+
+function Get-RequiredUpdateFileNames {
+    return @(
+        "openai_images_webui_no_python_config.ps1",
+        "webui_index.html",
+        "README.md",
+        "LICENSE",
+        "config.example.ini",
+        "启动图片WebUI-独立Config版.bat",
+        "发布说明.txt"
+    )
+}
+
+function Set-ProgramFileAtomically([string]$source, [string]$target) {
+    $suffix = [Guid]::NewGuid().ToString("N")
+    $temp = "$target.imagebot-new-$suffix"
+    $replaceBackup = "$target.imagebot-old-$suffix"
+    try {
+        [System.IO.File]::Copy($source, $temp, $true)
+        if (Test-Path -LiteralPath $target) {
+            [System.IO.File]::Replace($temp, $target, $replaceBackup, $true)
+        } else {
+            [System.IO.File]::Move($temp, $target)
+        }
+    } finally {
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $replaceBackup -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-ExpectedUpdateHash($info) {
+    $digest = ([string](Get-Prop $info "asset_digest" "")).Trim().ToLowerInvariant()
+    if ($digest -match '^sha256:([a-f0-9]{64})$') {
+        return $Matches[1]
+    }
+
+    $checksumUrl = ([string](Get-Prop $info "checksum_url" "")).Trim()
+    if ([string]::IsNullOrWhiteSpace($checksumUrl)) {
+        throw (New-HttpException 502 "更新包缺少 SHA-256 校验文件，已停止更新。")
+    }
+    if (-not $checksumUrl.StartsWith("https://github.com/$UpdateRepo/releases/download/")) {
+        throw (New-HttpException 502 "更新校验地址不在预期仓库内，已停止更新。")
+    }
+    try {
+        $checksumText = Invoke-HttpGetText $checksumUrl 30
+    } catch {
+        throw (New-HttpException 502 "无法下载更新校验文件：$($_.Exception.Message)")
+    }
+    if ($checksumText -notmatch '(?i)([a-f0-9]{64})') {
+        throw (New-HttpException 502 "更新校验文件格式不正确，已停止更新。")
+    }
+    return $Matches[1].ToLowerInvariant()
+}
+
+function Get-LatestCompletedUpdateBackup {
+    $updateRoot = Join-Path $ScriptDir ".updates"
+    if (-not (Test-Path -LiteralPath $updateRoot)) { return $null }
+    $allowedNames = @{}
+    foreach ($name in (Get-UpdateFileNames)) { $allowedNames[[string]$name] = $true }
+    foreach ($dir in @(Get-ChildItem -LiteralPath $updateRoot -Directory -Filter "backup-*" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)) {
+        $manifestPath = Join-Path $dir.FullName "update-manifest.json"
+        if (-not (Test-Path -LiteralPath $manifestPath)) { continue }
+        try {
+            $manifest = Get-Content -Raw -LiteralPath $manifestPath -Encoding UTF8 | ConvertFrom-Json
+            if ([string](Get-Prop $manifest "status" "") -ne "completed") { continue }
+            if ([string]::IsNullOrWhiteSpace([string](Get-Prop $manifest "previous_version" ""))) { continue }
+            $files = @($manifest.files)
+            if ($files.Count -eq 0) { continue }
+            $createdNames = @{}
+            $valid = $true
+            foreach ($name in @($manifest.created_files)) {
+                $text = [string]$name
+                if (-not $allowedNames.ContainsKey($text)) { $valid = $false; break }
+                $createdNames[$text] = $true
+            }
+            if (-not $valid) { continue }
+            foreach ($name in $files) {
+                $text = [string]$name
+                if (-not $allowedNames.ContainsKey($text)) { $valid = $false; break }
+                if (-not $createdNames.ContainsKey($text) -and -not (Test-Path -LiteralPath (Join-Path $dir.FullName $text))) {
+                    $valid = $false
+                    break
+                }
+            }
+            if ($valid) {
+                return [pscustomobject]@{ directory = $dir.FullName; manifest_path = $manifestPath; manifest = $manifest }
+            }
+        } catch {}
+    }
+    return $null
+}
+
+function Handle-UpdateStatus {
+    $backup = Get-LatestCompletedUpdateBackup
+    if ($null -eq $backup) {
+        return [ordered]@{ ok = $true; rollback_available = $false }
+    }
+    return [ordered]@{
+        ok = $true
+        rollback_available = $true
+        previous_version = [string](Get-Prop $backup.manifest "previous_version" "")
+        installed_version = [string](Get-Prop $backup.manifest "installed_version" "")
+        created_at = [string](Get-Prop $backup.manifest "created_at" "")
+    }
+}
+
 function Handle-UpdateApply($payload) {
     $info = Get-UpdateInfo
     if (-not $info.update_available) {
@@ -908,63 +1041,122 @@ function Handle-UpdateApply($payload) {
 
     $updateRoot = Join-Path $ScriptDir ".updates"
     Ensure-Directory $updateRoot
-    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $stamp = "{0}-{1}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), ([Guid]::NewGuid().ToString("N").Substring(0, 8))
     $downloadPath = Join-Path $updateRoot ("ImageBot-update-$stamp.zip")
+    $stageDir = Join-Path $updateRoot ("stage-$stamp")
     $backupDir = Join-Path $updateRoot ("backup-$stamp")
+    Ensure-Directory $stageDir
     Ensure-Directory $backupDir
 
+    $keepBackup = $false
+    try {
     Invoke-HttpDownloadFile ([string]$info.asset_url) $downloadPath 240
+    $expectedHash = Get-ExpectedUpdateHash $info
+    $actualHash = (Get-FileHash -LiteralPath $downloadPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualHash -ne $expectedHash) {
+        throw (New-HttpException 502 "更新包完整性校验失败，已停止更新。")
+    }
+
     $keyBytes = Read-ZipEntryBytes $downloadPath "config.ini"
     if ($null -eq $keyBytes) {
         throw (New-HttpException 502 "更新包缺少 config.ini，已停止更新。")
     }
     $configText = [System.Text.Encoding]::UTF8.GetString($keyBytes)
-    if ($configText -match "sk-[A-Za-z0-9_-]{12,}") {
-        throw (New-HttpException 502 "更新包内疑似包含 API Key，已停止更新。")
+    if ($configText -notmatch '(?m)^\uFEFF?\s*OPENAI_API_KEY\s*=\s*$' -or $configText -match "sk-[A-Za-z0-9_-]{12,}") {
+        throw (New-HttpException 502 "更新包内的接口密钥配置不安全，已停止更新。")
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::OpenRead($downloadPath)
-    $updatedFiles = New-Object System.Collections.ArrayList
-    $allowed = @(
-        "openai_images_webui_no_python_config.ps1",
-        "webui_index.html",
-        "README.md",
-        "LICENSE",
-        "config.example.ini",
-        "启动图片WebUI-独立Config版.bat",
-        "发布说明.txt"
-    )
     try {
-        foreach ($name in $allowed) {
+        foreach ($name in (Get-UpdateFileNames)) {
             $entry = $zip.Entries | Where-Object { (($_.FullName -replace "\\", "/") -eq $name) } | Select-Object -First 1
             if ($null -eq $entry) { continue }
-            $target = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir $name))
-            $scriptRoot = [System.IO.Path]::GetFullPath($ScriptDir).TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
-            if (-not $target.StartsWith($scriptRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-                throw (New-HttpException 500 "更新目标路径异常：$name")
-            }
-            if (Test-Path -LiteralPath $target) {
-                Copy-Item -LiteralPath $target -Destination (Join-Path $backupDir $name) -Force
-            }
-            $stream = $entry.Open()
-            $fileStream = $null
+            $stagePath = Join-Path $stageDir $name
+            $input = $entry.Open()
+            $output = $null
             try {
-                $fileStream = [System.IO.File]::Create($target)
-                $stream.CopyTo($fileStream)
+                $output = [System.IO.File]::Create($stagePath)
+                $input.CopyTo($output)
             } finally {
-                if ($null -ne $fileStream) { $fileStream.Close() }
-                $stream.Close()
+                if ($null -ne $output) { $output.Close() }
+                $input.Close()
             }
-            [void]$updatedFiles.Add($name)
         }
     } finally {
         $zip.Dispose()
     }
 
+    foreach ($name in (Get-RequiredUpdateFileNames)) {
+        if (-not (Test-Path -LiteralPath (Join-Path $stageDir $name))) {
+            throw (New-HttpException 502 "更新包缺少程序文件：$name")
+        }
+    }
+    $stagedScript = Get-Content -Raw -LiteralPath (Join-Path $stageDir "openai_images_webui_no_python_config.ps1") -Encoding UTF8
+    $expectedVersionPattern = '\$AppVersion\s*=\s*"' + [regex]::Escape([string]$info.latest_version) + '"'
+    if ($stagedScript -notmatch $expectedVersionPattern) {
+        throw (New-HttpException 502 "更新包版本与发布版本不一致，已停止更新。")
+    }
+
+    $updatedFiles = New-Object System.Collections.ArrayList
+    $createdFiles = New-Object System.Collections.ArrayList
+    $skippedFiles = New-Object System.Collections.ArrayList
+    try {
+        foreach ($name in (Get-UpdateFileNames)) {
+            $source = Join-Path $stageDir $name
+            if (-not (Test-Path -LiteralPath $source)) { continue }
+            $target = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir $name))
+            $scriptRoot = [System.IO.Path]::GetFullPath($ScriptDir).TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
+            if (-not $target.StartsWith($scriptRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw (New-HttpException 500 "更新目标路径异常：$name")
+            }
+
+            if ($name -eq "ImageBot.exe" -and (Test-Path -LiteralPath $target)) {
+                [void]$skippedFiles.Add($name)
+                continue
+            }
+            if (Test-Path -LiteralPath $target) {
+                Copy-Item -LiteralPath $target -Destination (Join-Path $backupDir $name) -Force
+            } else {
+                [void]$createdFiles.Add($name)
+            }
+            Set-ProgramFileAtomically $source $target
+            [void]$updatedFiles.Add($name)
+        }
+    } catch {
+        $replaceError = $_.Exception.Message
+        $restoreNames = @($updatedFiles.ToArray())
+        [array]::Reverse($restoreNames)
+        foreach ($name in $restoreNames) {
+            $target = Join-Path $ScriptDir $name
+            $backup = Join-Path $backupDir $name
+            try {
+                if (Test-Path -LiteralPath $backup) {
+                    Set-ProgramFileAtomically $backup $target
+                } elseif (Test-Path -LiteralPath $target) {
+                    Remove-Item -LiteralPath $target -Force
+                }
+            } catch {}
+        }
+        throw (New-HttpException 500 "更新文件替换失败，已自动恢复原版本：$replaceError")
+    }
+
     if ($updatedFiles.Count -eq 0) {
         throw (New-HttpException 502 "更新包没有可更新的程序文件。")
     }
+    $keepBackup = $true
+
+    $manifest = [ordered]@{
+        status = "completed"
+        created_at = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        previous_version = $AppVersion
+        installed_version = [string]$info.latest_version
+        package_sha256 = $actualHash
+        files = @($updatedFiles.ToArray())
+        created_files = @($createdFiles.ToArray())
+        skipped_files = @($skippedFiles.ToArray())
+    }
+    Set-Content -LiteralPath (Join-Path $backupDir "update-manifest.json") -Value (To-JsonText $manifest 20) -Encoding UTF8
 
     try {
         $script:IndexHtmlTemplate = Get-Content -Raw -LiteralPath (Join-Path $ScriptDir "webui_index.html") -Encoding UTF8
@@ -974,15 +1166,120 @@ function Handle-UpdateApply($payload) {
             Replace("%%APP_VERSION%%", (HtmlAttr ([string]$info.latest_version)))
     } catch {}
 
-    Write-AppLog "info" "updated app current=$AppVersion latest=$($info.latest_version) files=$($updatedFiles -join ',') backup=$backupDir"
+    Write-AppLog "info" "updated app current=$AppVersion latest=$($info.latest_version) hash=$actualHash files=$($updatedFiles -join ',') backup=$backupDir"
     return [ordered]@{
         ok = $true
         updated = $true
-        message = "更新已下载并覆盖程序文件。请关闭黑色启动窗口，然后重新双击启动以完全生效。"
+        message = "更新完成并已创建恢复备份。请重新启动 ImageBot 使新版本完全生效。"
         current_version = $AppVersion
         latest_version = $info.latest_version
         backup_dir = $backupDir
+        package_sha256 = $actualHash
+        rollback_available = $true
         updated_files = @($updatedFiles.ToArray())
+        skipped_files = @($skippedFiles.ToArray())
+    }
+    } finally {
+        Remove-Item -LiteralPath $downloadPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $stageDir -Recurse -Force -ErrorAction SilentlyContinue
+        if (-not $keepBackup) {
+            Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Handle-UpdateRollback($payload) {
+    $backup = Get-LatestCompletedUpdateBackup
+    if ($null -eq $backup) {
+        return [ordered]@{ ok = $true; rolled_back = $false; message = "没有可恢复的上一版本。" }
+    }
+
+    $manifest = $backup.manifest
+    $allowedNames = @{}
+    foreach ($name in (Get-UpdateFileNames)) { $allowedNames[[string]$name] = $true }
+    $createdNames = @{}
+    foreach ($name in @($manifest.created_files)) {
+        $text = [string]$name
+        if (-not $allowedNames.ContainsKey($text)) {
+            throw (New-HttpException 500 "恢复清单包含无效文件：$text")
+        }
+        $createdNames[$text] = $true
+    }
+    foreach ($name in @($manifest.files)) {
+        $text = [string]$name
+        if (-not $allowedNames.ContainsKey($text)) {
+            throw (New-HttpException 500 "恢复清单包含无效文件：$text")
+        }
+        if (-not $createdNames.ContainsKey($text) -and -not (Test-Path -LiteralPath (Join-Path $backup.directory $text))) {
+            throw (New-HttpException 500 "恢复备份不完整，缺少文件：$text")
+        }
+    }
+
+    $safetyName = "rollback-safety-{0}-{1}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), ([Guid]::NewGuid().ToString("N").Substring(0, 8))
+    $safetyDir = Join-Path (Join-Path $ScriptDir ".updates") $safetyName
+    Ensure-Directory $safetyDir
+    $changed = New-Object System.Collections.ArrayList
+    $originallyMissing = New-Object System.Collections.ArrayList
+    try {
+        foreach ($name in @($manifest.files)) {
+            $name = [string]$name
+            if ($createdNames.ContainsKey($name)) { continue }
+            $source = Join-Path $backup.directory $name
+            $target = Join-Path $ScriptDir $name
+            if (Test-Path -LiteralPath $target) {
+                Copy-Item -LiteralPath $target -Destination (Join-Path $safetyDir $name) -Force
+            } else {
+                [void]$originallyMissing.Add($name)
+            }
+            Set-ProgramFileAtomically $source $target
+            [void]$changed.Add($name)
+        }
+        foreach ($name in @($manifest.created_files)) {
+            $name = [string]$name
+            $target = Join-Path $ScriptDir $name
+            if (Test-Path -LiteralPath $target) {
+                Copy-Item -LiteralPath $target -Destination (Join-Path $safetyDir $name) -Force
+                Remove-Item -LiteralPath $target -Force
+                [void]$changed.Add($name)
+            }
+        }
+    } catch {
+        $rollbackError = $_.Exception.Message
+        $restoreNames = @($changed.ToArray())
+        [array]::Reverse($restoreNames)
+        foreach ($name in $restoreNames) {
+            $safety = Join-Path $safetyDir ([string]$name)
+            $target = Join-Path $ScriptDir ([string]$name)
+            try {
+                if (Test-Path -LiteralPath $safety) {
+                    Set-ProgramFileAtomically $safety $target
+                } elseif ($originallyMissing -contains [string]$name) {
+                    Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+                }
+            } catch {}
+        }
+        throw (New-HttpException 500 "恢复上一版本失败，当前版本已尽量保持不变：$rollbackError")
+    }
+
+    $manifest.status = "rolled_back"
+    $manifest | Add-Member -NotePropertyName "rolled_back_at" -NotePropertyValue (Get-Date).ToString("yyyy-MM-dd HH:mm:ss") -Force
+    Set-Content -LiteralPath $backup.manifest_path -Value (To-JsonText $manifest 20) -Encoding UTF8
+    Remove-Item -LiteralPath $safetyDir -Recurse -Force -ErrorAction SilentlyContinue
+
+    try {
+        $script:IndexHtmlTemplate = Get-Content -Raw -LiteralPath (Join-Path $ScriptDir "webui_index.html") -Encoding UTF8
+        $script:IndexHtml = $script:IndexHtmlTemplate.
+            Replace("%%BASE_URL%%", (HtmlAttr $script:BaseUrl)).
+            Replace("%%MODEL%%", (HtmlAttr $script:DefaultModel)).
+            Replace("%%APP_VERSION%%", (HtmlAttr ([string](Get-Prop $manifest "previous_version" $AppVersion))))
+    } catch {}
+
+    return [ordered]@{
+        ok = $true
+        rolled_back = $true
+        previous_version = [string](Get-Prop $manifest "previous_version" "")
+        message = "已恢复上一版本。请重新启动 ImageBot。"
+        restored_files = @($changed.ToArray())
     }
 }
 
@@ -1350,7 +1647,7 @@ $DefaultModel = ConfigValue "OPENAI_IMAGE_MODEL" "gpt-image-2"
 $HostName = ConfigValue "IMAGE_WEBUI_HOST" "127.0.0.1"
 $Port = ConfigInt "IMAGE_WEBUI_PORT" 7861 1 65535
 $TimeoutSec = ConfigInt "IMAGE_WEBUI_TIMEOUT" 240 10 1800
-$NoBrowser = ConfigBool "IMAGE_WEBUI_NO_BROWSER" $false
+$NoBrowser = (ConfigBool "IMAGE_WEBUI_NO_BROWSER" $false) -or ($env:IMAGEBOT_LAUNCHER -eq "1")
 $SaveOutputs = ConfigBool "IMAGE_WEBUI_SAVE_OUTPUTS" $true
 $MockMode = ConfigBool "IMAGE_WEBUI_MOCK" $false
 $ForceResponseFormat = ConfigBool "IMAGE_WEBUI_FORCE_RESPONSE_FORMAT" $false
@@ -1639,6 +1936,10 @@ function Route-Request($client, $req) {
         Send-Json $client 200 (Handle-UpdateCheck)
         return
     }
+    if ($method -eq "GET" -and $path -eq "/api/update/status") {
+        Send-Json $client 200 (Handle-UpdateStatus)
+        return
+    }
     if ($method -eq "GET" -and $path -eq "/api/history") {
         Send-Json $client 200 ([ordered]@{ items = @(Get-HistoryRecords 50) })
         return
@@ -1673,6 +1974,11 @@ function Route-Request($client, $req) {
         Send-Json $client 200 (Handle-UpdateApply $payload)
         return
     }
+    if ($method -eq "POST" -and $path -eq "/api/update/rollback") {
+        $payload = Parse-JsonBody $req.body
+        Send-Json $client 200 (Handle-UpdateRollback $payload)
+        return
+    }
     if ($method -eq "POST" -and $path -eq "/api/history/delete") {
         $payload = Parse-JsonBody $req.body
         Send-Json $client 200 (Remove-HistoryRecord ([string](Get-Prop $payload "id" "")))
@@ -1686,6 +1992,12 @@ function Route-Request($client, $req) {
     if ($method -eq "POST" -and $path -eq "/api/storage/clear") {
         $payload = Parse-JsonBody $req.body
         Send-Json $client 200 (Clear-Storage ([string](Get-Prop $payload "target" "")))
+        return
+    }
+    if ($method -eq "POST" -and $path -eq "/api/shutdown") {
+        [void](Parse-JsonBody $req.body)
+        Send-Json $client 200 ([ordered]@{ ok = $true; message = "ImageBot 正在退出。" })
+        $script:ShutdownRequested = $true
         return
     }
     if ($method -eq "POST" -and $path -eq "/api/generate") {
@@ -1746,7 +2058,7 @@ if (-not $NoBrowser) {
 }
 
 try {
-    while ($true) {
+    while (-not $script:ShutdownRequested) {
         $client = $listener.AcceptTcpClient()
         try {
             $req = Read-HttpRequest $client $MaxBodyBytes
