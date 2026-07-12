@@ -75,10 +75,12 @@ jobs:
           Copy-Item -LiteralPath "config.example.ini" -Destination (Join-Path $stage "config.ini") -Force
 
           @'
-          使用说明：
+          ImageBot 使用说明：
           1. 解压后双击“启动图片WebUI-独立Config版.bat”。
-          2. 首次打开页面后，按配置向导填写 OPENAI_API_KEY。
-          3. 本发布包不包含历史记录、日志、已生成图片，也不包含已保存的 API Key。
+          2. 第一次打开时填写接口密钥。
+          3. 在页面底部输入内容，点击“生成”。
+          4. 图片保存在本地，可在“设置 - 本地文件”中查看和清理。
+          5. 本发布包不包含作者的接口密钥、历史记录、日志或已生成图片。
           '@ | Set-Content -LiteralPath (Join-Path $stage "发布说明.txt") -Encoding UTF8
 
           Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal -Force
@@ -122,25 +124,24 @@ jobs:
           body: |
             # ImageBot ${{ github.ref_name }} 更新说明
 
-            ## 下载和使用
+            ## 开始使用
 
             1. 下载下面的 `ImageBot-${{ github.ref_name }}.zip`
             2. 解压压缩包
             3. 双击 `启动图片WebUI-独立Config版.bat`
-            4. 第一次打开时填写接口密钥（API Key）
+            4. 第一次打开时填写接口密钥
             5. 在底部输入想生成的图片内容，点击 `生成`
 
-            ## 工具说明
+            ## 可以做什么
 
-            ImageBot 是 Windows 本地 Image2 生图工具，支持自定义接口地址和接口密钥（API Key），支持文生图和上传图片改图。
+            - 输入文字生成图片。
+            - 上传图片后继续修改。
+            - 下载、查看大图和再次生成。
+            - 在设置中检查更新和管理本地文件。
 
-            ## 安全说明
+            ## 重要说明
 
-            - 发布包不包含作者本地 API Key。
-            - 发布包内的 `config.ini` 会自动使用空的 `OPENAI_API_KEY=`。
-            - 发布包不包含本地生成历史、日志、已生成图片。
-
-            ## 完整改动
-
-            自动生成的完整改动记录见下方。
+            - 接口密钥只保存在使用本工具的电脑上。
+            - 发布包不包含作者的接口密钥、历史记录、日志或已生成图片。
+            - 图片生成费用和服务稳定性由接口服务提供方决定。
           generate_release_notes: true
