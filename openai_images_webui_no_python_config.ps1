@@ -46,7 +46,7 @@ function Read-ConfigFile([string]$path) {
 }
 
 $Config = Read-ConfigFile $ConfigPath
-$AppVersion = "v1.4.0"
+$AppVersion = "v1.5.0"
 $UpdateRepo = "dh666i/imageBot"
 $script:ShutdownRequested = $false
 
@@ -110,6 +110,8 @@ function Apply-RuntimeConfigFromFile {
     $script:BaseUrl = Normalize-BaseUrl $script:BaseUrlRaw
     $script:ApiKey = ConfigValue "OPENAI_API_KEY" ""
     $script:DefaultModel = ConfigValue "OPENAI_IMAGE_MODEL" "gpt-image-2"
+    $script:RequestMode = (ConfigValue "IMAGEBOT_REQUEST_MODE" "auto").Trim().ToLowerInvariant()
+    if ($script:RequestMode -notin @("auto", "basic", "full")) { $script:RequestMode = "auto" }
     $script:HostName = ConfigValue "IMAGE_WEBUI_HOST" "127.0.0.1"
     $script:Port = ConfigInt "IMAGE_WEBUI_PORT" 7861 1 65535
     $script:TimeoutSec = ConfigInt "IMAGE_WEBUI_TIMEOUT" 240 10 1800
@@ -445,6 +447,33 @@ function Compact-HistoryImages($images) {
     return @($result.ToArray())
 }
 
+function Get-HistoryRecordByRequestId([string]$requestId) {
+    $target = ($requestId + "").Trim()
+    $found = $null
+    if ([string]::IsNullOrWhiteSpace($target) -or -not (Test-Path -LiteralPath $HistoryFile)) { return $null }
+    foreach ($line in (Get-Content -LiteralPath $HistoryFile -Encoding UTF8 -ErrorAction SilentlyContinue)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        try {
+            $item = $line | ConvertFrom-Json
+            if ([string](Get-Prop $item "request_id" "") -eq $target) { $found = $item }
+        } catch {}
+    }
+    return $found
+}
+
+function Remove-HistoryRecordsForRequestId([string]$requestId) {
+    $target = ($requestId + "").Trim()
+    if ([string]::IsNullOrWhiteSpace($target) -or -not (Test-Path -LiteralPath $HistoryFile)) { return }
+    $remaining = New-Object System.Collections.ArrayList
+    foreach ($line in (Get-Content -LiteralPath $HistoryFile -Encoding UTF8)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $remove = $false
+        try { $remove = ([string](Get-Prop ($line | ConvertFrom-Json) "request_id" "") -eq $target) } catch {}
+        if (-not $remove) { [void]$remaining.Add($line) }
+    }
+    Set-Content -LiteralPath $HistoryFile -Value @($remaining.ToArray()) -Encoding UTF8
+}
+
 function Append-HistoryRecord([string]$action, [string]$status, $payload, $result) {
     try {
         Ensure-Directory $OutputDir
@@ -457,8 +486,11 @@ function Append-HistoryRecord([string]$action, [string]$status, $payload, $resul
             if ($null -ne $err) { $errorMessage = [string](Get-Prop $err "message" "") }
             $elapsedMs = [int](Get-Prop $result "elapsed_ms" 0)
         }
+        $requestId = [string](Get-Prop $payload "request_id" "")
+        Remove-HistoryRecordsForRequestId $requestId
         $record = [ordered]@{
             id = [Guid]::NewGuid().ToString("N")
+            request_id = $requestId
             time = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
             action = $action
             status = $status
@@ -468,6 +500,7 @@ function Append-HistoryRecord([string]$action, [string]$status, $payload, $resul
             quality = [string](Get-Prop $payload "quality" "")
             background = [string](Get-Prop $payload "background" "")
             output_format = [string](Get-Prop $payload "output_format" "")
+            request_mode = [string](Get-Prop $payload "request_mode" $RequestMode)
             image_count = @($images).Count
             images = @($images)
             error = $errorMessage
@@ -613,6 +646,7 @@ function Handle-ConfigSave($payload) {
     $model = ([string](Get-Prop $payload "model" $DefaultModel)).Trim()
     $timeout = Get-RequestInt $payload "timeout_sec" $TimeoutSec 10 1800 "超时"
     $mock = Get-Prop $payload "mock" $MockMode
+    $requestMode = ([string](Get-Prop $payload "request_mode" $RequestMode)).Trim().ToLowerInvariant()
 
     if ([string]::IsNullOrWhiteSpace($base)) {
         throw (New-HttpException 400 "Base URL 不能为空。")
@@ -623,6 +657,7 @@ function Handle-ConfigSave($payload) {
     if ([string]::IsNullOrWhiteSpace($model)) {
         throw (New-HttpException 400 "模型不能为空。")
     }
+    if ($requestMode -notin @("auto", "basic", "full")) { $requestMode = "auto" }
 
     $mockText = if (($mock -eq $true) -or ([string]$mock).Trim().ToLowerInvariant() -in @("1", "true", "yes", "on")) { "1" } else { "0" }
     $values = [ordered]@{
@@ -631,6 +666,7 @@ function Handle-ConfigSave($payload) {
         OPENAI_IMAGE_MODEL = $model
         IMAGE_WEBUI_TIMEOUT = [string]$timeout
         IMAGE_WEBUI_MOCK = $mockText
+        IMAGEBOT_REQUEST_MODE = $requestMode
     }
     Save-ConfigValues $values
     Write-AppLog "info" "config saved base=$BaseUrl model=$DefaultModel timeout=$TimeoutSec mock=$MockMode key_present=$(-not [string]::IsNullOrWhiteSpace($ApiKey))"
@@ -715,7 +751,24 @@ function Get-ConfigSnapshot {
         mock = $MockMode
         force_response_format = $ForceResponseFormat
         include_stream_flag = $IncludeStreamFlag
+        request_mode = $RequestMode
+        model_presets = @(Get-ModelPresets)
         warnings = @(Get-ConfigWarnings)
+    }
+}
+
+function Get-ModelPresets {
+    $raw = ConfigValue "IMAGEBOT_MODEL_PRESETS" "gpt-image-2,gpt-image-2.5"
+    return @($raw -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 } | Select-Object -Unique)
+}
+
+function Apply-RequestCompatibility($apiPayload, [string]$mode = "") {
+    $effectiveMode = ([string]$mode).Trim().ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($effectiveMode)) { $effectiveMode = $RequestMode }
+    if ($effectiveMode -eq "basic") {
+        foreach ($name in @("quality", "background", "output_format", "output_compression")) {
+            $apiPayload.Remove($name)
+        }
     }
 }
 
@@ -1015,8 +1068,9 @@ function Get-LatestCompletedUpdateBackup {
 
 function Handle-UpdateStatus {
     $backup = Get-LatestCompletedUpdateBackup
+    $pendingLauncher = Test-Path -LiteralPath (Join-Path (Join-Path $ScriptDir ".updates") "pending-launcher\ImageBot.exe")
     if ($null -eq $backup) {
-        return [ordered]@{ ok = $true; rollback_available = $false }
+        return [ordered]@{ ok = $true; rollback_available = $false; launcher_update_pending = $pendingLauncher }
     }
     return [ordered]@{
         ok = $true
@@ -1024,6 +1078,7 @@ function Handle-UpdateStatus {
         previous_version = [string](Get-Prop $backup.manifest "previous_version" "")
         installed_version = [string](Get-Prop $backup.manifest "installed_version" "")
         created_at = [string](Get-Prop $backup.manifest "created_at" "")
+        launcher_update_pending = $pendingLauncher
     }
 }
 
@@ -1101,6 +1156,8 @@ function Handle-UpdateApply($payload) {
     $updatedFiles = New-Object System.Collections.ArrayList
     $createdFiles = New-Object System.Collections.ArrayList
     $skippedFiles = New-Object System.Collections.ArrayList
+    $pendingFiles = New-Object System.Collections.ArrayList
+    $pendingLauncherDir = Join-Path $updateRoot "pending-launcher"
     try {
         foreach ($name in (Get-UpdateFileNames)) {
             $source = Join-Path $stageDir $name
@@ -1112,7 +1169,15 @@ function Handle-UpdateApply($payload) {
             }
 
             if ($name -eq "ImageBot.exe" -and (Test-Path -LiteralPath $target)) {
-                [void]$skippedFiles.Add($name)
+                if ($env:IMAGEBOT_LAUNCHER -eq "1") {
+                    Ensure-Directory $pendingLauncherDir
+                    Set-ProgramFileAtomically $source (Join-Path $pendingLauncherDir $name)
+                    [void]$pendingFiles.Add($name)
+                } else {
+                    Copy-Item -LiteralPath $target -Destination (Join-Path $backupDir $name) -Force
+                    Set-ProgramFileAtomically $source $target
+                    [void]$updatedFiles.Add($name)
+                }
                 continue
             }
             if (Test-Path -LiteralPath $target) {
@@ -1155,6 +1220,7 @@ function Handle-UpdateApply($payload) {
         files = @($updatedFiles.ToArray())
         created_files = @($createdFiles.ToArray())
         skipped_files = @($skippedFiles.ToArray())
+        pending_files = @($pendingFiles.ToArray())
     }
     Set-Content -LiteralPath (Join-Path $backupDir "update-manifest.json") -Value (To-JsonText $manifest 20) -Encoding UTF8
 
@@ -1178,6 +1244,7 @@ function Handle-UpdateApply($payload) {
         rollback_available = $true
         updated_files = @($updatedFiles.ToArray())
         skipped_files = @($skippedFiles.ToArray())
+        pending_files = @($pendingFiles.ToArray())
     }
     } finally {
         Remove-Item -LiteralPath $downloadPath -Force -ErrorAction SilentlyContinue
@@ -1195,6 +1262,7 @@ function Handle-UpdateRollback($payload) {
     }
 
     $manifest = $backup.manifest
+    $pendingLauncherDir = Join-Path (Join-Path $ScriptDir ".updates") "pending-launcher"
     $allowedNames = @{}
     foreach ($name in (Get-UpdateFileNames)) { $allowedNames[[string]$name] = $true }
     $createdNames = @{}
@@ -1265,6 +1333,7 @@ function Handle-UpdateRollback($payload) {
     $manifest | Add-Member -NotePropertyName "rolled_back_at" -NotePropertyValue (Get-Date).ToString("yyyy-MM-dd HH:mm:ss") -Force
     Set-Content -LiteralPath $backup.manifest_path -Value (To-JsonText $manifest 20) -Encoding UTF8
     Remove-Item -LiteralPath $safetyDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $pendingLauncherDir -Recurse -Force -ErrorAction SilentlyContinue
 
     try {
         $script:IndexHtmlTemplate = Get-Content -Raw -LiteralPath (Join-Path $ScriptDir "webui_index.html") -Encoding UTF8
@@ -1393,7 +1462,21 @@ function Invoke-JsonPost($url, $headers, [string]$body, [int]$timeoutSec) {
 
 function Invoke-Upstream($uiPayload, [string]$endpoint, $apiPayload, [string]$historyPrefix) {
     $started = Get-Date
-    $requestId = [Guid]::NewGuid().ToString()
+    $requestId = ([string](Get-Prop $uiPayload "request_id" "")).Trim()
+    if ($requestId.Length -lt 8 -or $requestId.Length -gt 100) { $requestId = [Guid]::NewGuid().ToString() }
+    $previous = Get-HistoryRecordByRequestId $requestId
+    if ($null -ne $previous -and [string](Get-Prop $previous "status" "") -eq "success") {
+        return [ordered]@{
+            endpoint = $endpoint
+            upstream_url = ""
+            request_id = $requestId
+            replayed = $true
+            elapsed_ms = 0
+            request = $apiPayload
+            raw = [ordered]@{ replayed = $true; message = "已恢复之前完成的请求，未重复调用上游。" }
+            images = @(Get-Prop $previous "images" @())
+        }
+    }
     $base = Normalize-BaseUrl ([string](Get-Prop $uiPayload "base_url" $BaseUrl))
     $key = ([string](Get-Prop $uiPayload "api_key" $ApiKey)).Trim()
 
@@ -1532,8 +1615,11 @@ function Handle-ApiGenerate($payload) {
     }
     $apiPayload = New-CompactHashtable $pairs
     Add-OptionalImageFields $apiPayload $payload
+    Apply-RequestCompatibility $apiPayload ([string](Get-Prop $payload "request_mode" $RequestMode))
     $result = Invoke-Upstream $payload "/v1/images/generations" $apiPayload "generate"
-    Append-HistoryRecord "generate" $(if ($null -ne $result.error) { "error" } else { "success" }) $payload $result
+    if (-not [bool](Get-Prop $result "replayed" $false)) {
+        Append-HistoryRecord "generate" $(if ($null -ne $result.error) { "error" } else { "success" }) $payload $result
+    }
     return $result
 }
 
@@ -1582,6 +1668,7 @@ function Handle-ApiEdit($payload) {
     }
     $apiPayload = New-CompactHashtable $pairs
     Add-OptionalImageFields $apiPayload $payload
+    Apply-RequestCompatibility $apiPayload ([string](Get-Prop $payload "request_mode" $RequestMode))
 
     $mask = ([string](Get-Prop $payload "mask" "")).Trim()
     if ($mask.Length -gt 0) {
@@ -1590,7 +1677,9 @@ function Handle-ApiEdit($payload) {
     }
 
     $result = Invoke-Upstream $payload "/v1/images/edits" $apiPayload "edit"
-    Append-HistoryRecord "edit" $(if ($null -ne $result.error) { "error" } else { "success" }) $payload $result
+    if (-not [bool](Get-Prop $result "replayed" $false)) {
+        Append-HistoryRecord "edit" $(if ($null -ne $result.error) { "error" } else { "success" }) $payload $result
+    }
     return $result
 }
 
@@ -1644,6 +1733,8 @@ $BaseUrlRaw = ConfigValue "OPENAI_BASE_URL" "https://api.henng.cn/"
 $BaseUrl = Normalize-BaseUrl $BaseUrlRaw
 $ApiKey = ConfigValue "OPENAI_API_KEY" ""
 $DefaultModel = ConfigValue "OPENAI_IMAGE_MODEL" "gpt-image-2"
+$RequestMode = (ConfigValue "IMAGEBOT_REQUEST_MODE" "auto").Trim().ToLowerInvariant()
+if ($RequestMode -notin @("auto", "basic", "full")) { $RequestMode = "auto" }
 $HostName = ConfigValue "IMAGE_WEBUI_HOST" "127.0.0.1"
 $Port = ConfigInt "IMAGE_WEBUI_PORT" 7861 1 65535
 $TimeoutSec = ConfigInt "IMAGE_WEBUI_TIMEOUT" 240 10 1800

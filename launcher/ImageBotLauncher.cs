@@ -45,6 +45,8 @@ namespace ImageBotLauncher
                     return;
                 }
 
+                if (TrySchedulePendingUpdate(appDir)) return;
+
                 bool eventCreated;
                 using (EventWaitHandle exitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, exitEventName, out eventCreated))
                 {
@@ -87,9 +89,44 @@ namespace ImageBotLauncher
             catch (WaitHandleCannotBeOpenedException) { }
         }
 
+        private static string QuotePowerShell(string value)
+        {
+            return "\"" + value.Replace("\"", "\\\"") + "\"";
+        }
+
         private static bool ShouldOpenBrowser()
         {
             return !String.Equals(Environment.GetEnvironmentVariable("IMAGEBOT_LAUNCHER_NO_BROWSER"), "1", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TrySchedulePendingUpdate(string appDir)
+        {
+            string pending = Path.Combine(appDir, ".updates", "pending-launcher", "ImageBot.exe");
+            if (!File.Exists(pending)) return false;
+            string target = Path.Combine(appDir, "ImageBot.exe");
+            string powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+            if (!File.Exists(powershell)) powershell = "powershell.exe";
+
+            ProcessStartInfo start = new ProcessStartInfo();
+            start.FileName = powershell;
+            start.Arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -Command " + QuotePowerShell(
+                "$pidToWait=" + Process.GetCurrentProcess().Id + "; " +
+                "$pending=" + QuotePowerShell(pending) + "; " +
+                "$target=" + QuotePowerShell(target) + "; " +
+                "for($i=0;$i -lt 80;$i++){ if(-not (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue)){ break }; Start-Sleep -Milliseconds 250 }; " +
+                "if(Test-Path -LiteralPath $pending){ Move-Item -LiteralPath $pending -Destination $target -Force; Remove-Item -LiteralPath (Split-Path -Parent $pending) -Recurse -Force -ErrorAction SilentlyContinue; Start-Process -FilePath $target }");
+            start.UseShellExecute = false;
+            start.CreateNoWindow = true;
+            start.WindowStyle = ProcessWindowStyle.Hidden;
+            try
+            {
+                Process.Start(start);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 

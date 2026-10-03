@@ -22,14 +22,14 @@ foreach ($definition in $ast.FindAll({ param($node) $node -is [System.Management
 $script:RealAtomicImpl = (Get-Item Function:\Set-ProgramFileAtomically).ScriptBlock
 $realExpectedHashImpl = (Get-Item Function:\Get-ExpectedUpdateHash).ScriptBlock
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ("ImageBot-UpdaterTests-" + [Guid]::NewGuid().ToString("N"))
-$packagePath = Join-Path $testRoot "ImageBot-v1.4.0.zip"
+$packagePath = Join-Path $testRoot "ImageBot-v1.5.0.zip"
 
 function New-TestPackage {
     $source = Join-Path $testRoot "package-source"
     New-Item -ItemType Directory -Path $source -Force | Out-Null
     foreach ($name in (Get-RequiredUpdateFileNames)) {
         $content = "new::$name"
-        if ($name -eq "openai_images_webui_no_python_config.ps1") { $content = '$AppVersion = "v1.4.0"' }
+        if ($name -eq "openai_images_webui_no_python_config.ps1") { $content = '$AppVersion = "v1.5.0"' }
         if ($name -eq "webui_index.html") { $content = '<html>%%BASE_URL%% %%MODEL%% %%APP_VERSION%%</html>' }
         Set-Content -LiteralPath (Join-Path $source $name) -Value $content -Encoding UTF8
     }
@@ -63,11 +63,11 @@ function Initialize-TestCase([string]$name) {
     $script:FakeUpdateInfo = [pscustomobject]@{
         ok = $true
         current_version = "v1.3.0"
-        latest_version = "v1.4.0"
+        latest_version = "v1.5.0"
         update_available = $true
-        asset_url = "https://github.com/dh666i/imageBot/releases/download/v1.4.0/ImageBot-v1.4.0.zip"
+        asset_url = "https://github.com/dh666i/imageBot/releases/download/v1.5.0/ImageBot-v1.5.0.zip"
         asset_digest = ""
-        checksum_url = "https://github.com/dh666i/imageBot/releases/download/v1.4.0/ImageBot-v1.4.0.zip.sha256"
+        checksum_url = "https://github.com/dh666i/imageBot/releases/download/v1.5.0/ImageBot-v1.5.0.zip.sha256"
     }
     return [pscustomobject]@{ Root = $caseRoot; Originals = $originals }
 }
@@ -138,6 +138,17 @@ try {
     Assert-True $hashRejected "invalid package hash was accepted"
     Assert-OriginalFiles $hashFailure
     Assert-True (@(Get-ChildItem -LiteralPath (Join-Path $hashFailure.Root ".updates") -Force -ErrorAction SilentlyContinue).Count -eq 0) "rejected update artifacts were not cleaned"
+
+    $previousLauncherState = $env:IMAGEBOT_LAUNCHER
+    $pendingCase = Initialize-TestCase "pending-launcher"
+    Set-Content -LiteralPath (Join-Path $pendingCase.Root "ImageBot.exe") -Value "old launcher" -Encoding ASCII
+    $env:IMAGEBOT_LAUNCHER = "1"
+    $pendingResult = Handle-UpdateApply ([pscustomobject]@{})
+    $pendingPath = Join-Path $pendingCase.Root ".updates\pending-launcher\ImageBot.exe"
+    Assert-True ((Test-Path -LiteralPath $pendingPath)) "running launcher update was not staged"
+    Assert-True (((Get-Content -Raw -LiteralPath (Join-Path $pendingCase.Root "ImageBot.exe") -Encoding ASCII).Trim()) -eq "old launcher") "running launcher was overwritten"
+    Assert-True (@($pendingResult.pending_files) -contains "ImageBot.exe") "pending launcher was not reported"
+    if ($null -eq $previousLauncherState) { Remove-Item Env:IMAGEBOT_LAUNCHER -ErrorAction SilentlyContinue } else { $env:IMAGEBOT_LAUNCHER = $previousLauncherState }
 
     Write-Host "Updater tests passed."
 } finally {

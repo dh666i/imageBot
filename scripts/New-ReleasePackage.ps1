@@ -57,6 +57,8 @@ ImageBot $Tag 使用说明
 程序运行后会显示在 Windows 右下角托盘。双击托盘图标可重新打开页面，右键可重新启动或退出。
 如果 ImageBot.exe 无法运行，可使用“启动图片WebUI-独立Config版.bat”备用启动。
 
+本版本支持自定义模型名称，例如 image2.5。接口服务不支持高级图片参数时，可在设置中把接口兼容模式改为“基础参数”。刷新页面后，已完成的生成结果会从历史记录中恢复。
+
 本发布包不包含接口密钥、历史记录、日志或已生成图片。
 "@ | Set-Content -LiteralPath (Join-Path $stage "发布说明.txt") -Encoding UTF8
 

@@ -50,6 +50,7 @@ try {
         "scripts\Sign-Launcher.ps1",
         "scripts\New-ReleasePackage.ps1",
         "scripts\Test-Updater.ps1",
+        "scripts\Test-UpstreamResponses.ps1",
         "scripts\Test-ImageBot.ps1"
     )
     foreach ($relativePath in $powerShellFiles) {
@@ -83,12 +84,13 @@ try {
 
     if (-not $SkipUpdaterTests) {
         & (Join-Path $PSScriptRoot "Test-Updater.ps1") -Root $Root
+        & (Join-Path $PSScriptRoot "Test-UpstreamResponses.ps1") -Root $Root
     }
 
     $appDir = Join-Path $testRoot "app"
     New-Item -ItemType Directory -Path $appDir -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $Root "openai_images_webui_no_python_config.ps1") -Destination $appDir
-    Copy-Item -LiteralPath (Join-Path $Root "webui_index.html") -Destination $appDir
+    Copy-Item -LiteralPath (Join-Path $Root "openai_images_webui_no_python_config.ps1") -Destination (Join-Path $appDir "openai_images_webui_no_python_config.ps1") -Force
+    Copy-Item -LiteralPath (Join-Path $Root "webui_index.html") -Destination (Join-Path $appDir "webui_index.html") -Force
     $port = Get-FreeTcpPort
     $configPath = Join-Path $appDir "config.ini"
     @"
@@ -136,8 +138,28 @@ IMAGE_WEBUI_MOCK=1
 
     $config = Invoke-RestMethod -Uri "$baseUrl/api/config" -Method Get -TimeoutSec 5
     Assert-True $config.mock "mock mode is not active"
+    Assert-True (@($config.model_presets) -contains "gpt-image-2.5") "image2.5 model preset is missing"
+    Assert-True ($config.request_mode -eq "auto") "default request mode is incorrect"
+    $savedConfig = Invoke-TestPost "$baseUrl/api/config/save" ([ordered]@{
+        base_url = "https://api.henng.cn"
+        api_key = ""
+        model = "gpt-image-2.5"
+        timeout_sec = 240
+        mock = $true
+        request_mode = "basic"
+    })
+    Assert-True ($savedConfig.config.request_mode -eq "basic") "saved request mode was not applied immediately"
+    [void](Invoke-TestPost "$baseUrl/api/config/save" ([ordered]@{
+        base_url = "https://api.henng.cn"
+        api_key = ""
+        model = "gpt-image-2"
+        timeout_sec = 240
+        mock = $true
+        request_mode = "auto"
+    }))
     $page = Invoke-WebRequest -Uri "$baseUrl/" -UseBasicParsing -TimeoutSec 5
     Assert-True ($page.Content -match [regex]::Escape("v" + $appVersionMatch.Groups[1].Value)) "rendered page does not contain the current version"
+    Assert-True ($page.Content -match 'id="modelPreset"' -and $page.Content -match 'id="requestMode"') "model compatibility controls are missing"
 
     $generation = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{
         prompt = "自动化测试图片"
@@ -145,17 +167,45 @@ IMAGE_WEBUI_MOCK=1
         size = "1024x1024"
         n = 2
         mock = $true
+        request_id = "test-request-id-001"
     })
     Assert-True $generation.mock "generation did not use mock mode"
     Assert-True (@($generation.images).Count -eq 2) "generation did not return two images"
 
+    $replayed = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{
+        prompt = "自动化测试图片"
+        model = "gpt-image-2"
+        size = "1024x1024"
+        n = 2
+        mock = $true
+        request_id = "test-request-id-001"
+    })
+    Assert-True $replayed.replayed "duplicate request was not replayed from history"
+    Assert-True (@($replayed.images).Count -eq 2) "replayed request did not return saved images"
+
+    $basic = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{
+        prompt = "基础兼容模式测试"
+        model = "gpt-image-2.5"
+        size = "1024x1024"
+        n = 1
+        quality = "high"
+        background = "transparent"
+        output_format = "webp"
+        request_mode = "basic"
+        mock = $true
+        request_id = "test-request-id-basic"
+    })
+    Assert-True ($basic.request.model -eq "gpt-image-2.5") "custom image model was not forwarded"
+    Assert-True ($null -eq $basic.request.quality -and $null -eq $basic.request.background -and $null -eq $basic.request.output_format) "basic mode kept optional image fields"
+
     $history = Invoke-RestMethod -Uri "$baseUrl/api/history" -Method Get -TimeoutSec 5
-    Assert-True (@($history.items).Count -eq 1) "history endpoint did not return the generated request"
-    Assert-True ($history.items[0].prompt -eq "自动化测试图片") "history prompt is incorrect"
+    Assert-True (@($history.items).Count -eq 2) "history endpoint did not deduplicate the replayed request"
+    $historyItem = @($history.items | Where-Object { $_.prompt -eq "自动化测试图片" } | Select-Object -First 1)
+    Assert-True ($historyItem.Count -eq 1) "history prompt is incorrect"
 
     $storage = Invoke-RestMethod -Uri "$baseUrl/api/storage" -Method Get -TimeoutSec 5
-    Assert-True ([int]$storage.images.files -eq 2) "storage endpoint did not count generated images"
-    Assert-True ([int]$storage.history_records -eq 1) "storage endpoint did not count history"
+    Assert-True ([int]$storage.images.files -eq 3) "storage endpoint did not count generated images"
+    Assert-True ([int]$storage.history_records -eq 2) "storage endpoint did not count history"
 
     $updateStatus = Invoke-RestMethod -Uri "$baseUrl/api/update/status" -Method Get -TimeoutSec 5
     Assert-True (-not $updateStatus.rollback_available) "fresh installation unexpectedly offers rollback"

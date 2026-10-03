@@ -1180,7 +1180,8 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
     <details class="drawer-card" id="advancedSettings">
       <summary>高级设置<span>图片参数、模型、超时和演示模式</span></summary>
       <div class="drawer-details">
-        <label class="field"><span>模型</span><input id="model" value="%%MODEL%%" autocomplete="off" /></label>
+        <label class="field"><span>模型</span><select id="modelPreset"><option value="">自定义模型</option></select></label>
+        <label class="field"><span>模型名称</span><input id="model" value="%%MODEL%%" autocomplete="off" /></label>
         <div class="field-row">
           <label class="field"><span>尺寸</span><select id="sizeInput"><option>1024x1024</option><option>1536x1024</option><option>1024x1536</option><option>2048x2048</option><option>2048x1152</option><option>auto</option></select></label>
           <label class="field"><span>生成数量</span><select id="countInput"><option value="1">1 张</option><option value="2">2 张</option><option value="4">4 张</option></select></label>
@@ -1194,6 +1195,7 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
           <label class="field"><span>等待上限（秒）</span><input id="timeoutSecInput" type="number" min="10" max="1800" value="240" /></label>
           <label class="field"><span>演示模式</span><select id="mockMode"><option value="0">关闭</option><option value="1">开启</option></select></label>
         </div>
+        <label class="field"><span>接口兼容模式</span><select id="requestMode"><option value="auto">自动</option><option value="full">完整参数</option><option value="basic">基础参数</option></select><small class="field-help">自定义中转不支持清晰度、背景或格式时，选择“基础参数”。</small></label>
       </div>
     </details>
 
@@ -1348,6 +1350,7 @@ function commonPayload() {
     model: qs("model").value.trim()
   };
   if (!payload.model && state.config) payload.model = state.config.model || "";
+  payload.request_mode = qs("requestMode").value || (state.config && state.config.request_mode) || "auto";
   return payload;
 }
 
@@ -1355,7 +1358,8 @@ function configPayload() {
   return {
     ...commonPayload(),
     timeout_sec: Number(qs("timeoutSecInput").value || state.timeoutSec || 240),
-    mock: qs("mockMode").value === "1"
+    mock: qs("mockMode").value === "1",
+    request_mode: qs("requestMode").value || "auto"
   };
 }
 
@@ -1442,6 +1446,7 @@ function applyHistoryOptions(item) {
   if (item.quality !== undefined) qs("qualityInput").value = item.quality || "";
   if (item.background !== undefined) qs("backgroundInput").value = item.background || "";
   if (item.output_format !== undefined) qs("outputFormatInput").value = item.output_format || "";
+  if (item.request_mode) qs("requestMode").value = item.request_mode;
   renderOptionSummary();
   renderConfig();
 }
@@ -1600,7 +1605,7 @@ function imageResult(images, meta = {}) {
   const batchId = `batch-${state.nextBatchId++}`;
   state.resultBatches[batchId] = images;
   state.requestBatches[batchId] = meta.request || state.lastRequest || null;
-  const title = meta.history ? "历史结果" : "生成完成";
+  const title = meta.history ? "历史结果" : meta.replayed ? "已恢复结果" : "生成完成";
   const actions = images.length > 1 ? `<button class="small-btn" onclick="downloadAllImages('${batchId}')">下载全部</button>` : "";
   return `
     <div class="result-head">
@@ -1648,6 +1653,7 @@ function captureRequest() {
   const prompt = qs("promptInput").value.trim();
   if (!prompt) throw new Error("请先输入想生成什么图片。");
   return {
+    requestId: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `imagebot-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     prompt,
     files: state.files.slice(),
     options: optionPayload(),
@@ -1668,7 +1674,7 @@ async function submitRequest(request, fromRetry = false) {
   const assistantMessage = addMessage("assistant", loadingHtml(request.files.length));
 
   try {
-    const payload = compact({ ...request.common, ...request.options, prompt: request.prompt });
+    const payload = compact({ ...request.common, ...request.options, prompt: request.prompt, request_id: request.requestId });
     let path = "/api/generate";
     if (request.files.length) {
       path = "/api/edit";
@@ -1677,7 +1683,7 @@ async function submitRequest(request, fromRetry = false) {
     qs("generationTitle").textContent = request.files.length ? `正在参考 ${request.files.length} 张图片生成` : "正在生成图片";
     qs("generationTimer").textContent = "已等待 0 秒，请不要关闭窗口";
     const body = await requestJSON(path, payload, { generation: true, userAbort: () => request.userAborted });
-    updateMessage(assistantMessage, imageResult(body.images, { request }));
+    updateMessage(assistantMessage, imageResult(body.images, { request, replayed: body.replayed }));
     qs("promptInput").value = "";
     autoSizePrompt();
     if (!fromRetry || request.files === state.files) {
@@ -1693,8 +1699,7 @@ async function submitRequest(request, fromRetry = false) {
       qs("stopBtn").disabled = true;
       try {
         await fetch("/api/health", { cache: "no-store" });
-        await loadHistory();
-        updateMessage(assistantMessage, `<div class="error-card"><b>页面已停止等待</b><pre>后台请求已经结束。请在左侧“最近生成”中查看最终结果，再决定是否重试。</pre></div>`);
+        await waitForRequestResult(request, assistantMessage);
       } catch {
         showToast("后台请求状态读取失败，请稍后刷新页面查看最近生成。");
       } finally {
@@ -1705,6 +1710,31 @@ async function submitRequest(request, fromRetry = false) {
   } finally {
     if (!request.userAborted && state.busy) setBusy(false);
   }
+}
+
+async function waitForRequestResult(request, assistantMessage) {
+  const deadline = Date.now() + (Math.max(60, state.timeoutSec + 30) * 1000);
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch("/api/history?limit=50", { cache: "no-store" });
+      const body = await response.json();
+      const item = arr(body.items).find(entry => entry && entry.request_id === request.requestId);
+      if (item && item.status === "success") {
+        updateMessage(assistantMessage, imageResult(item.images, { request, replayed: true }));
+        await loadHistory();
+        showToast("后台生成已完成，结果已经恢复。");
+        return true;
+      }
+      if (item && item.status === "error") {
+        updateMessage(assistantMessage, errorHtml(item.error || "后台生成失败。", request));
+        await loadHistory();
+        return true;
+      }
+    } catch {}
+    await new Promise(resolve => setTimeout(resolve, 1800));
+  }
+  updateMessage(assistantMessage, `<div class="error-card"><b>暂时没有读到结果</b><pre>后台请求可能仍在处理。刷新页面后可以从左侧“最近生成”查看结果。</pre></div>`);
+  return false;
 }
 
 window.stopGeneration = () => {
@@ -1757,6 +1787,7 @@ function renderConfig() {
   const dotClass = state.busy ? "warn" : mock ? "warn" : hasKey ? "" : "bad";
   const base = qs("baseUrl").value || cfg.base_url || "";
   const model = qs("model").value || cfg.model || "";
+  qs("requestMode").value = cfg.request_mode || qs("requestMode").value || "auto";
 
   qs("keyStatus").innerHTML = `<span class="dot ${dotClass}"></span><span>${statusText}</span>`;
   qs("topStatus").innerHTML = `<span class="dot ${dotClass}"></span><span>${statusText}</span>`;
@@ -1785,6 +1816,10 @@ async function loadConfig() {
     qs("model").value = cfg.model || qs("model").value;
     qs("timeoutSecInput").value = state.timeoutSec;
     qs("mockMode").value = cfg.mock ? "1" : "0";
+    const presets = arr(cfg.model_presets);
+    qs("modelPreset").innerHTML = `<option value="">自定义模型</option>${presets.map(item => `<option value="${attr(item)}">${esc(item)}</option>`).join("")}`;
+    qs("modelPreset").value = presets.includes(cfg.model) ? cfg.model : "";
+    qs("requestMode").value = cfg.request_mode || "auto";
     renderConfig();
     renderOptionSummary();
   } catch {
@@ -2385,6 +2420,12 @@ for (const id of ["baseUrl", "apiKey", "model", "timeoutSecInput", "mockMode", "
     renderOptionSummary();
   });
 }
+
+qs("modelPreset").addEventListener("change", () => {
+  if (qs("modelPreset").value) qs("model").value = qs("modelPreset").value;
+  renderConfig();
+});
+qs("requestMode").addEventListener("change", renderConfig);
 
 renderFiles();
 renderOptionSummary();
