@@ -22,14 +22,14 @@ foreach ($definition in $ast.FindAll({ param($node) $node -is [System.Management
 $script:RealAtomicImpl = (Get-Item Function:\Set-ProgramFileAtomically).ScriptBlock
 $realExpectedHashImpl = (Get-Item Function:\Get-ExpectedUpdateHash).ScriptBlock
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ("ImageBot-UpdaterTests-" + [Guid]::NewGuid().ToString("N"))
-$packagePath = Join-Path $testRoot "ImageBot-v1.5.0.zip"
+$packagePath = Join-Path $testRoot "ImageBot-v1.7.0.zip"
 
 function New-TestPackage {
     $source = Join-Path $testRoot "package-source"
     New-Item -ItemType Directory -Path $source -Force | Out-Null
     foreach ($name in (Get-RequiredUpdateFileNames)) {
         $content = "new::$name"
-        if ($name -eq "openai_images_webui_no_python_config.ps1") { $content = '$AppVersion = "v1.5.0"' }
+        if ($name -eq "openai_images_webui_no_python_config.ps1") { $content = '$AppVersion = "v1.7.0"' }
         if ($name -eq "webui_index.html") { $content = '<html>%%BASE_URL%% %%MODEL%% %%APP_VERSION%%</html>' }
         Set-Content -LiteralPath (Join-Path $source $name) -Value $content -Encoding UTF8
     }
@@ -52,7 +52,7 @@ function Initialize-TestCase([string]$name) {
     $script:ScriptDir = $caseRoot
     $script:AppVersion = "v1.3.0"
     $script:UpdateRepo = "dh666i/imageBot"
-    $script:BaseUrl = "https://api.henng.cn"
+    $script:BaseUrl = "https://www.chichiapi.cn"
     $script:DefaultModel = "gpt-image-2"
     $script:LogDir = Join-Path $caseRoot "logs"
     $script:LogFile = Join-Path $script:LogDir "webui-test.log"
@@ -63,11 +63,11 @@ function Initialize-TestCase([string]$name) {
     $script:FakeUpdateInfo = [pscustomobject]@{
         ok = $true
         current_version = "v1.3.0"
-        latest_version = "v1.5.0"
+        latest_version = "v1.7.0"
         update_available = $true
-        asset_url = "https://github.com/dh666i/imageBot/releases/download/v1.5.0/ImageBot-v1.5.0.zip"
+        asset_url = "https://github.com/dh666i/imageBot/releases/download/v1.7.0/ImageBot-v1.7.0.zip"
         asset_digest = ""
-        checksum_url = "https://github.com/dh666i/imageBot/releases/download/v1.5.0/ImageBot-v1.5.0.zip.sha256"
+        checksum_url = "https://github.com/dh666i/imageBot/releases/download/v1.7.0/ImageBot-v1.7.0.zip.sha256"
     }
     return [pscustomobject]@{ Root = $caseRoot; Originals = $originals }
 }

@@ -46,7 +46,7 @@ function Read-ConfigFile([string]$path) {
 }
 
 $Config = Read-ConfigFile $ConfigPath
-$AppVersion = "v1.5.0"
+$AppVersion = "v1.7.0"
 $UpdateRepo = "dh666i/imageBot"
 $script:ShutdownRequested = $false
 
@@ -106,10 +106,10 @@ function Normalize-BaseUrl([string]$url) {
 
 function Apply-RuntimeConfigFromFile {
     $script:Config = Read-ConfigFile $ConfigPath
-    $script:BaseUrlRaw = ConfigValue "OPENAI_BASE_URL" "https://api.henng.cn/"
+    $script:BaseUrlRaw = ConfigValue "OPENAI_BASE_URL" "https://www.chichiapi.cn/"
     $script:BaseUrl = Normalize-BaseUrl $script:BaseUrlRaw
     $script:ApiKey = ConfigValue "OPENAI_API_KEY" ""
-    $script:DefaultModel = ConfigValue "OPENAI_IMAGE_MODEL" "gpt-image-2"
+    $script:DefaultModel = ConfigValue "OPENAI_IMAGE_MODEL" "gpt-image-2.5-flare"
     $script:RequestMode = (ConfigValue "IMAGEBOT_REQUEST_MODE" "auto").Trim().ToLowerInvariant()
     if ($script:RequestMode -notin @("auto", "basic", "full")) { $script:RequestMode = "auto" }
     $script:HostName = ConfigValue "IMAGE_WEBUI_HOST" "127.0.0.1"
@@ -461,55 +461,274 @@ function Get-HistoryRecordByRequestId([string]$requestId) {
     return $found
 }
 
-function Remove-HistoryRecordsForRequestId([string]$requestId) {
-    $target = ($requestId + "").Trim()
-    if ([string]::IsNullOrWhiteSpace($target) -or -not (Test-Path -LiteralPath $HistoryFile)) { return }
-    $remaining = New-Object System.Collections.ArrayList
-    foreach ($line in (Get-Content -LiteralPath $HistoryFile -Encoding UTF8)) {
-        if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        $remove = $false
-        try { $remove = ([string](Get-Prop ($line | ConvertFrom-Json) "request_id" "") -eq $target) } catch {}
-        if (-not $remove) { [void]$remaining.Add($line) }
+function Write-HistoryLinesAtomic($lines, [string]$historyPath = $HistoryFile) {
+    Ensure-Directory $OutputDir
+    $tempPath = "$historyPath.tmp-$([Guid]::NewGuid().ToString('N'))"
+    $backupPath = "$historyPath.old-$([Guid]::NewGuid().ToString('N'))"
+    $content = @($lines) -join [Environment]::NewLine
+    if (-not [string]::IsNullOrEmpty($content)) { $content += [Environment]::NewLine }
+    try {
+        [System.IO.File]::WriteAllText($tempPath, $content, [System.Text.UTF8Encoding]::new($false))
+        if (Test-Path -LiteralPath $historyPath) {
+            [System.IO.File]::Replace($tempPath, $historyPath, $backupPath, $true)
+        } else {
+            [System.IO.File]::Move($tempPath, $historyPath)
+        }
+    } finally {
+        Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $backupPath -Force -ErrorAction SilentlyContinue
     }
-    Set-Content -LiteralPath $HistoryFile -Value @($remaining.ToArray()) -Encoding UTF8
 }
 
-function Append-HistoryRecord([string]$action, [string]$status, $payload, $result) {
-    try {
-        Ensure-Directory $OutputDir
-        $images = @()
-        $errorMessage = ""
-        $elapsedMs = 0
-        if ($null -ne $result) {
-            $images = Compact-HistoryImages (Get-Prop $result "images" @())
-            $err = Get-Prop $result "error" $null
-            if ($null -ne $err) { $errorMessage = [string](Get-Prop $err "message" "") }
-            $elapsedMs = [int](Get-Prop $result "elapsed_ms" 0)
+function Save-HistoryInputImages($payload) {
+    if (-not $SaveOutputs) { return @() }
+    $sources = New-Object System.Collections.ArrayList
+    $images = Get-Prop $payload "images" $null
+    if ($null -ne $images) {
+        foreach ($image in $images) {
+            $value = ([string]$image).Trim()
+            if ($value.StartsWith("data:image/")) { [void]$sources.Add($value) }
         }
-        $requestId = [string](Get-Prop $payload "request_id" "")
-        Remove-HistoryRecordsForRequestId $requestId
-        $record = [ordered]@{
-            id = [Guid]::NewGuid().ToString("N")
-            request_id = $requestId
-            time = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-            action = $action
-            status = $status
-            prompt = [string](Get-Prop $payload "prompt" "")
-            model = [string](Get-Prop $payload "model" $DefaultModel)
-            size = [string](Get-Prop $payload "size" "")
-            quality = [string](Get-Prop $payload "quality" "")
-            background = [string](Get-Prop $payload "background" "")
-            output_format = [string](Get-Prop $payload "output_format" "")
-            request_mode = [string](Get-Prop $payload "request_mode" $RequestMode)
-            image_count = @($images).Count
-            images = @($images)
-            error = $errorMessage
-            elapsed_ms = $elapsedMs
-        }
-        Add-Content -LiteralPath $HistoryFile -Value (To-JsonText $record 20) -Encoding UTF8
-    } catch {
-        Write-AppLog "warn" "写入历史失败：$($_.Exception.Message)"
     }
+    $single = ([string](Get-Prop $payload "image" "")).Trim()
+    if ($single.StartsWith("data:image/")) { [void]$sources.Add($single) }
+
+    $savedImages = New-Object System.Collections.ArrayList
+    $index = 1
+    foreach ($source in $sources) {
+        try {
+            Assert-DataImageWithinLimit $source "历史参考图"
+            $mime = "image/png"
+            if ($source -match '^data:(image/[^;,]+)') { $mime = $Matches[1] }
+            $saved = Save-ImageFromBase64 $source $mime "input" $index
+            if ($null -ne $saved) {
+                [void]$savedImages.Add([ordered]@{
+                    filename = $saved.filename
+                    local_url = $saved.local_url
+                    src = $saved.local_url
+                    mime_type = $mime
+                    bytes = $saved.bytes
+                })
+            }
+        } catch {
+            Write-AppLog "warn" "保存历史参考图失败：$($_.Exception.Message)"
+        }
+        $index++
+    }
+    return @($savedImages.ToArray())
+}
+
+function Set-HistoryInputImages($payload, $images) {
+    if ($payload -is [System.Collections.IDictionary]) {
+        $payload["history_input_images"] = @($images)
+    } elseif ($null -ne $payload.PSObject.Properties["history_input_images"]) {
+        $payload.history_input_images = @($images)
+    } else {
+        $payload | Add-Member -NotePropertyName "history_input_images" -NotePropertyValue @($images) -Force
+    }
+}
+
+function Write-HistoryRecord([string]$action, [string]$status, $payload, $result) {
+    Ensure-Directory $OutputDir
+    $requestId = [string](Get-Prop $payload "request_id" "")
+    $previous = Get-HistoryRecordByRequestId $requestId
+    $parentId = [string](Get-Prop $payload "parent_request_id" "")
+    if ($null -ne $previous) {
+        if ([string]::IsNullOrWhiteSpace($parentId)) { $parentId = [string](Get-Prop $previous "parent_request_id" "") }
+        $revision = [int](Get-Prop $previous "revision" 1)
+        $rootId = [string](Get-Prop $previous "root_request_id" $requestId)
+    }
+    $parent = Get-HistoryRecordByRequestId $parentId
+    if ($null -eq $previous) {
+        $revision = 1
+        $rootId = $requestId
+    }
+    if ($null -eq $previous -and $null -ne $parent) {
+        $revision = [int](Get-Prop $parent "revision" 1) + 1
+        $rootId = [string](Get-Prop $parent "root_request_id" $parentId)
+    }
+
+    $images = @()
+    $errorMessage = ""
+    $elapsedMs = 0
+    $httpStatus = 0
+    $retrySafe = $false
+    if ($null -ne $result) {
+        $images = Compact-HistoryImages (Get-Prop $result "images" @())
+        $err = Get-Prop $result "error" $null
+        if ($null -ne $err) {
+            $errorMessage = [string](Get-Prop $err "message" "")
+            $httpStatus = [int](Get-Prop $err "status" 0)
+            $retrySafe = [bool](Get-Prop $result "retry_safe" $false)
+        }
+        $elapsedMs = [int](Get-Prop $result "elapsed_ms" 0)
+    }
+    $now = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    $record = [ordered]@{
+        id = [string](Get-Prop $previous "id" ([Guid]::NewGuid().ToString("N")))
+        request_id = $requestId
+        root_request_id = $rootId
+        parent_request_id = $parentId
+        revision = $revision
+        time = [string](Get-Prop $previous "time" $now)
+        updated_at = $now
+        action = $action
+        status = $status
+        prompt = [string](Get-Prop $payload "prompt" "")
+        model = [string](Get-Prop $payload "model" $DefaultModel)
+        size = [string](Get-Prop $payload "size" "")
+        requested_count = [int](Get-Prop $payload "n" 1)
+        quality = [string](Get-Prop $payload "quality" "")
+        background = [string](Get-Prop $payload "background" "")
+        output_format = [string](Get-Prop $payload "output_format" "")
+        request_mode = [string](Get-Prop $payload "request_mode" $RequestMode)
+        image_count = @($images).Count
+        images = @($images)
+        input_images = @(Get-Prop $payload "history_input_images" @())
+        error = $errorMessage
+        http_status = $httpStatus
+        retry_safe = $retrySafe
+        outcome_unknown = ($status -eq "unknown")
+        elapsed_ms = $elapsedMs
+    }
+
+    $lines = New-Object System.Collections.ArrayList
+    $replaced = $false
+    if (Test-Path -LiteralPath $HistoryFile) {
+        foreach ($line in (Get-Content -LiteralPath $HistoryFile -Encoding UTF8)) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            $matches = $false
+            try { $matches = ([string](Get-Prop ($line | ConvertFrom-Json) "request_id" "") -eq $requestId) } catch {}
+            if ($matches) {
+                if (-not $replaced) { [void]$lines.Add((To-JsonText $record 30)); $replaced = $true }
+            } else {
+                [void]$lines.Add($line)
+            }
+        }
+    }
+    if (-not $replaced) { [void]$lines.Add((To-JsonText $record 30)) }
+    Write-HistoryLinesAtomic @($lines.ToArray())
+    return $record
+}
+
+function Recover-InterruptedHistoryRecords([string]$historyPath = $HistoryFile) {
+    if (-not (Test-Path -LiteralPath $historyPath)) { return }
+    $lines = New-Object System.Collections.ArrayList
+    $changed = $false
+    foreach ($line in (Get-Content -LiteralPath $historyPath -Encoding UTF8)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        try {
+            $item = $line | ConvertFrom-Json
+            $statusProperty = $item.PSObject.Properties["status"]
+            $statusText = if ($null -ne $statusProperty) { [string]$statusProperty.Value } else { "" }
+            if ($statusText -eq "processing") {
+                $item.status = "unknown"
+                $item | Add-Member -NotePropertyName "error" -NotePropertyValue "程序在上游请求结束前关闭，结果状态未知。为避免重复计费，ImageBot 不会自动重发。" -Force
+                $item | Add-Member -NotePropertyName "retry_safe" -NotePropertyValue $false -Force
+                $item | Add-Member -NotePropertyName "updated_at" -NotePropertyValue (Get-Date).ToString("yyyy-MM-dd HH:mm:ss") -Force
+                $changed = $true
+                [void]$lines.Add((To-JsonText $item 30))
+            } else {
+                [void]$lines.Add($line)
+            }
+        } catch { [void]$lines.Add($line) }
+    }
+    if ($changed) { Write-HistoryLinesAtomic @($lines.ToArray()) $historyPath }
+    return $changed
+}
+
+function Set-HistoryInputContext($payload) {
+    $requestId = ([string](Get-Prop $payload "request_id" "")).Trim()
+    $previous = Get-HistoryRecordByRequestId $requestId
+    $savedInputs = @(Get-Prop $previous "input_images" @())
+    if ($savedInputs.Count -eq 0) { $savedInputs = @(Save-HistoryInputImages $payload) }
+    Set-HistoryInputImages $payload $savedInputs
+}
+
+function Set-PayloadRequestId($payload) {
+    $requestId = ([string](Get-Prop $payload "request_id" "")).Trim()
+    if ($requestId.Length -lt 8 -or $requestId.Length -gt 100) { $requestId = [Guid]::NewGuid().ToString("N") }
+    if ($payload -is [System.Collections.IDictionary]) {
+        $payload["request_id"] = $requestId
+    } elseif ($null -ne $payload.PSObject.Properties["request_id"]) {
+        $payload.request_id = $requestId
+    } else {
+        $payload | Add-Member -NotePropertyName "request_id" -NotePropertyValue $requestId -Force
+    }
+    return $requestId
+}
+
+function Get-LocalRequestError($_error, [string]$requestId) {
+    $status = Get-HttpExceptionStatus $_error.Exception
+    $message = [string]$_.Exception.Message
+    $retrySafe = ($status -in @(400, 422) -and $message -match '(?i)(unsupported|unknown|unrecognized|invalid).{0,40}(parameter|field|quality|background|format|compression)|(parameter|field|quality|background|format|compression).{0,40}(unsupported|unknown|unrecognized|invalid)')
+    return [ordered]@{
+            error = [ordered]@{ message = $message; status = $status; request_id = $requestId; retry_safe = $retrySafe; outcome_unknown = ($status -eq 408 -or $status -ge 500) }
+        elapsed_ms = 0
+        retry_safe = $retrySafe
+        outcome_unknown = ($status -eq 408 -or $status -ge 500)
+        images = @()
+    }
+}
+
+function Test-RetrySafeUpstreamError([int]$status, [string]$message) {
+    return ($status -in @(400, 422) -and $message -match '(?i)(unsupported|unknown|unrecognized|invalid).{0,40}(parameter|field|quality|background|format|compression)|(parameter|field|quality|background|format|compression).{0,40}(unsupported|unknown|unrecognized|invalid)')
+}
+
+function Invoke-TrackedImageRequest($payload, [string]$endpoint, $apiPayload, [string]$action) {
+    $requestId = Set-PayloadRequestId $payload
+    $previous = Get-HistoryRecordByRequestId $requestId
+    if ($null -ne $previous) {
+        $previousStatus = [string](Get-Prop $previous "status" "")
+        $safeRetry = [bool](Get-Prop $previous "retry_safe" $false)
+        if ($previousStatus -eq "error" -and -not $safeRetry) {
+            return [ordered]@{
+                request_id = $requestId
+                replayed = $true
+                error = [ordered]@{ message = [string](Get-Prop $previous "error" "该请求之前失败。"); status = [int](Get-Prop $previous "http_status" 400); request_id = $requestId }
+                retry_safe = $false
+                images = @()
+            }
+        }
+        if ($previousStatus -in @("success", "processing", "unknown")) {
+            $existing = Invoke-Upstream $payload $endpoint $apiPayload $action
+            if (-not [bool](Get-Prop $existing "pending" $false)) { return $existing }
+            if ($previousStatus -ne "error") { return $existing }
+        }
+    }
+
+    Set-HistoryInputContext $payload
+    [void](Write-HistoryRecord $action "processing" $payload $null)
+    if ($null -eq $script:ActiveRequestIds) { $script:ActiveRequestIds = @{} }
+    $ownerToken = [Guid]::NewGuid().ToString("N")
+    $script:ActiveRequestIds[$requestId] = $ownerToken
+    if ($payload -is [System.Collections.IDictionary]) { $payload["request_owner"] = $ownerToken }
+    else { $payload | Add-Member -NotePropertyName "request_owner" -NotePropertyValue $ownerToken -Force }
+    $result = $null
+    try {
+        $result = Invoke-Upstream $payload $endpoint $apiPayload $action
+    } catch {
+        $result = Get-LocalRequestError $_ $requestId
+    } finally {
+        if ($script:ActiveRequestIds.ContainsKey($requestId) -and [string]$script:ActiveRequestIds[$requestId] -eq $ownerToken) {
+            [void]$script:ActiveRequestIds.Remove($requestId)
+        }
+    }
+
+    if ([bool](Get-Prop $result "pending" $false) -or [bool](Get-Prop $result "replayed" $false)) { return $result }
+    $status = if ($null -ne (Get-Prop $result "error" $null)) {
+        if ([bool](Get-Prop $result "outcome_unknown" $false)) { "unknown" } else { "error" }
+    } else { "success" }
+    if ($status -eq "success" -and @(Get-Prop $result "images" @()).Count -eq 0) {
+        $status = "unknown"
+        $result.outcome_unknown = $true
+        $result.error = [ordered]@{ message = "上游已返回，但没有可识别的图片；结果状态未知。为避免重复计费，ImageBot 不会自动重发。"; status = 200; request_id = $requestId }
+    }
+    $record = Write-HistoryRecord $action $status $payload $result
+    $result.root_request_id = $record.root_request_id
+    $result.parent_request_id = $record.parent_request_id
+    $result.revision = $record.revision
+    return $result
 }
 
 function Get-HistoryRecords([int]$limit) {
@@ -570,7 +789,7 @@ function Get-AppImageFiles {
     if (-not (Test-Path -LiteralPath $OutputDir)) { return @() }
     return @(
         Get-ChildItem -LiteralPath $OutputDir -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match '^\d{8}-\d{6}-(generate|edit|mock)-\d+-[a-f0-9]{8}\.(png|jpe?g|webp|gif|svg)$' }
+            Where-Object { $_.Name -match '^\d{8}-\d{6}-(generate|edit|mock|input)-\d+-[a-f0-9]{8}\.(png|jpe?g|webp|gif|svg)$' }
     )
 }
 
@@ -605,6 +824,25 @@ function Get-StorageSnapshot {
         logs = $logs
         history_records = $historyCount
         total_bytes = ([long]$images.bytes + [long]$logs.bytes)
+        history_file = $HistoryFile
+    }
+}
+
+function Export-HistoryData {
+    $records = @(Get-HistoryRecords 10000)
+    return [ordered]@{
+        ok = $true
+        exported_at = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        version = $AppVersion
+        settings = [ordered]@{
+            base_url = $BaseUrl
+            model = $DefaultModel
+            timeout_sec = $TimeoutSec
+            request_mode = $RequestMode
+            mock = $MockMode
+            api_key_included = $false
+        }
+        records = $records
     }
 }
 
@@ -621,6 +859,10 @@ function Clear-Storage([string]$target) {
         foreach ($file in @(Get-AppLogFiles)) {
             Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
         }
+    } elseif ($name -eq "all") {
+        foreach ($file in @(Get-AppImageFiles)) { Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop }
+        foreach ($file in @(Get-AppLogFiles)) { Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop }
+        [void](Clear-HistoryRecords)
     } else {
         throw (New-HttpException 400 "不支持的清理类型。")
     }
@@ -758,8 +1000,42 @@ function Get-ConfigSnapshot {
 }
 
 function Get-ModelPresets {
-    $raw = ConfigValue "IMAGEBOT_MODEL_PRESETS" "gpt-image-2,gpt-image-2.5"
-    return @($raw -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 } | Select-Object -Unique)
+    $raw = ConfigValue "IMAGEBOT_MODEL_PRESETS" "gpt-image-2.5-flare,gpt-image-2.5-flare-2026-09-08,gpt-image-2.5-sunburst,gpt-image-2.5-sunburst-2026-09-08,gpt-image-2"
+    $presets = New-Object System.Collections.ArrayList
+    foreach ($name in @("gpt-image-2.5-flare", "gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst", "gpt-image-2.5-sunburst-2026-09-08", "gpt-image-2")) {
+        [void]$presets.Add($name)
+    }
+    foreach ($name in @($raw -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 })) {
+        if ($name -eq "gpt-image-2.5") { continue }
+        if (-not $presets.Contains($name)) { [void]$presets.Add($name) }
+    }
+    return @($presets.ToArray())
+}
+
+function Test-GptImageModel([string]$model) {
+    return $model -match '^gpt-image-2(?:\.5-(?:flare|sunburst)(?:-\d{4}-\d{2}-\d{2})?)?$'
+}
+
+function Assert-ImageSize([string]$model, [string]$size) {
+    $value = ($size + "").Trim().ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($value) -or $value -eq "auto" -or -not (Test-GptImageModel $model)) { return }
+    if ($value -notmatch '^(\d{2,4})x(\d{2,4})$') {
+        throw (New-HttpException 400 "图片尺寸应填写“宽x高”，例如 1536x864。")
+    }
+    $width = [int]$Matches[1]
+    $height = [int]$Matches[2]
+    $pixels = [long]$width * [long]$height
+    $ratio = [double][Math]::Max($width, $height) / [double][Math]::Min($width, $height)
+    if (($width % 16) -ne 0 -or ($height % 16) -ne 0 -or [Math]::Max($width, $height) -gt 3840 -or $ratio -gt 3 -or $pixels -lt 655360 -or $pixels -gt 8294400) {
+        throw (New-HttpException 400 "GPT Image 尺寸需满足：宽高为 16 的倍数、最长边不超过 3840、比例不超过 3:1、总像素为 655360 至 8294400。")
+    }
+}
+
+function Assert-ImageQuality([string]$model, [string]$quality) {
+    $value = ($quality + "").Trim().ToLowerInvariant()
+    if ($value -in @("xhigh", "max") -and $model -notmatch '^gpt-image-2\.5-(flare|sunburst)(-\d{4}-\d{2}-\d{2})?$') {
+        throw (New-HttpException 400 "xhigh 和 max 清晰度仅适用于 GPT Image 2.5 Flare/Sunburst。")
+    }
 }
 
 function Apply-RequestCompatibility($apiPayload, [string]$mode = "") {
@@ -1353,6 +1629,30 @@ function Handle-UpdateRollback($payload) {
 }
 
 function New-MockResult($uiPayload, [string]$endpoint, $apiPayload, [datetime]$started, [string]$requestId) {
+    $mockError = ([string](Get-Prop $uiPayload "mock_error" "")).Trim()
+    if (-not [string]::IsNullOrWhiteSpace($mockError)) {
+        return [ordered]@{
+            endpoint = $endpoint
+            request_id = $requestId
+            mock = $true
+            elapsed_ms = 0
+            error = [ordered]@{ message = $mockError; status = 400; request_id = $requestId; retry_safe = (Test-RetrySafeUpstreamError 400 $mockError); outcome_unknown = $false }
+            retry_safe = (Test-RetrySafeUpstreamError 400 $mockError)
+            outcome_unknown = $false
+            images = @()
+        }
+    }
+    if ([bool](Get-Prop $uiPayload "mock_empty_images" $false)) {
+        return [ordered]@{
+            endpoint = $endpoint
+            request_id = $requestId
+            mock = $true
+            elapsed_ms = 0
+            request = $apiPayload
+            raw = [ordered]@{ mock = $true; message = "Mock 响应没有返回图片，用于验证未知结果处理。" }
+            images = @()
+        }
+    }
     $count = 1
     if ($endpoint -eq "/v1/images/generations") {
         $count = [int](Get-Prop $apiPayload "n" 1)
@@ -1462,19 +1762,46 @@ function Invoke-JsonPost($url, $headers, [string]$body, [int]$timeoutSec) {
 
 function Invoke-Upstream($uiPayload, [string]$endpoint, $apiPayload, [string]$historyPrefix) {
     $started = Get-Date
-    $requestId = ([string](Get-Prop $uiPayload "request_id" "")).Trim()
-    if ($requestId.Length -lt 8 -or $requestId.Length -gt 100) { $requestId = [Guid]::NewGuid().ToString() }
+    $requestId = Set-PayloadRequestId $uiPayload
     $previous = Get-HistoryRecordByRequestId $requestId
     if ($null -ne $previous -and [string](Get-Prop $previous "status" "") -eq "success") {
         return [ordered]@{
             endpoint = $endpoint
             upstream_url = ""
             request_id = $requestId
+            root_request_id = [string](Get-Prop $previous "root_request_id" $requestId)
+            parent_request_id = [string](Get-Prop $previous "parent_request_id" "")
+            revision = [int](Get-Prop $previous "revision" 1)
             replayed = $true
             elapsed_ms = 0
             request = $apiPayload
             raw = [ordered]@{ replayed = $true; message = "已恢复之前完成的请求，未重复调用上游。" }
             images = @(Get-Prop $previous "images" @())
+        }
+    }
+    if ($null -ne $previous -and [string](Get-Prop $previous "status" "") -in @("processing", "unknown")) {
+        $activeOwner = ""
+        if ($null -ne $script:ActiveRequestIds -and $script:ActiveRequestIds.ContainsKey($requestId)) {
+            $activeOwner = [string]$script:ActiveRequestIds[$requestId]
+        }
+        $payloadOwner = [string](Get-Prop $uiPayload "request_owner" "")
+        if ([string]$previous.status -eq "unknown" -or [string]::IsNullOrWhiteSpace($activeOwner) -or $activeOwner -ne $payloadOwner) {
+            return [ordered]@{
+                request_id = $requestId
+                pending = $true
+                state = [string]$previous.status
+                message = $(if ($previous.status -eq "unknown") { "上次请求结果未确认。为避免重复计费，尚未重新提交。" } else { "相同请求仍在处理中，没有重复提交。" })
+                images = @()
+            }
+        }
+    }
+    if ($null -ne $previous -and [string](Get-Prop $previous "status" "") -eq "error" -and -not [bool](Get-Prop $previous "retry_safe" $false)) {
+        return [ordered]@{
+            request_id = $requestId
+            replayed = $true
+            error = [ordered]@{ message = [string](Get-Prop $previous "error" "该请求之前失败。"); status = [int](Get-Prop $previous "http_status" 400); request_id = $requestId }
+            retry_safe = $false
+            images = @()
         }
     }
     $base = Normalize-BaseUrl ([string](Get-Prop $uiPayload "base_url" $BaseUrl))
@@ -1484,7 +1811,8 @@ function Invoke-Upstream($uiPayload, [string]$endpoint, $apiPayload, [string]$hi
         throw (New-HttpException 400 "Base URL 不能为空。")
     }
 
-    if ($MockMode) {
+    $requestMock = Get-Prop $uiPayload "mock" $MockMode
+    if (($requestMock -eq $true) -or ([string]$requestMock).Trim().ToLowerInvariant() -in @("1", "true", "yes", "on")) {
         return New-MockResult $uiPayload $endpoint $apiPayload $started $requestId
     }
 
@@ -1519,7 +1847,7 @@ function Invoke-Upstream($uiPayload, [string]$endpoint, $apiPayload, [string]$hi
         $images = Normalize-Images $parsed $apiPayload $historyPrefix
         Write-AppLog "info" "POST $endpoint completed request_id=$requestId status=$([int]$response.StatusCode) elapsed_ms=$elapsed images=$(@($images).Count)"
 
-        return [ordered]@{
+        $result = [ordered]@{
             endpoint = $endpoint
             upstream_url = $upstreamUrl
             request_id = $requestId
@@ -1529,6 +1857,7 @@ function Invoke-Upstream($uiPayload, [string]$endpoint, $apiPayload, [string]$hi
             raw = (Redact-Raw $parsed)
             images = @($images)
         }
+        return $result
     } catch {
         $status = 504
         $rawText = ""
@@ -1584,17 +1913,24 @@ function Invoke-Upstream($uiPayload, [string]$endpoint, $apiPayload, [string]$hi
         }
         Write-AppLog "error" "POST $endpoint failed request_id=$requestId status=$status message=$message"
 
-        return [ordered]@{
+        $retrySafe = Test-RetrySafeUpstreamError $status $message
+        $outcomeUnknown = ($status -eq 408 -or $status -ge 500)
+        $result = [ordered]@{
             error = [ordered]@{
                 message = $errorMessage
                 status = $status
                 upstream_url = $upstreamUrl
                 request_id = $requestId
                 upstream_request_id = $upstreamRequestId
+                retry_safe = $retrySafe
+                outcome_unknown = $outcomeUnknown
             }
             elapsed_ms = $elapsed
+            retry_safe = $retrySafe
+            outcome_unknown = $outcomeUnknown
             images = @()
         }
+        return $result
     }
 }
 
@@ -1602,6 +1938,8 @@ function Handle-ApiGenerate($payload) {
     $prompt = Required-String $payload "prompt" "Prompt"
     $model = ([string](Get-Prop $payload "model" $DefaultModel)).Trim()
     if ([string]::IsNullOrWhiteSpace($model)) { $model = $DefaultModel }
+    Assert-ImageSize $model ([string](Get-Prop $payload "size" ""))
+    Assert-ImageQuality $model ([string](Get-Prop $payload "quality" ""))
 
     $pairs = @{
         model = $model
@@ -1616,17 +1954,15 @@ function Handle-ApiGenerate($payload) {
     $apiPayload = New-CompactHashtable $pairs
     Add-OptionalImageFields $apiPayload $payload
     Apply-RequestCompatibility $apiPayload ([string](Get-Prop $payload "request_mode" $RequestMode))
-    $result = Invoke-Upstream $payload "/v1/images/generations" $apiPayload "generate"
-    if (-not [bool](Get-Prop $result "replayed" $false)) {
-        Append-HistoryRecord "generate" $(if ($null -ne $result.error) { "error" } else { "success" }) $payload $result
-    }
-    return $result
+    return Invoke-TrackedImageRequest $payload "/v1/images/generations" $apiPayload "generate"
 }
 
 function Handle-ApiEdit($payload) {
     $prompt = Required-String $payload "prompt" "Prompt"
     $model = ([string](Get-Prop $payload "model" $DefaultModel)).Trim()
     if ([string]::IsNullOrWhiteSpace($model)) { $model = $DefaultModel }
+    Assert-ImageSize $model ([string](Get-Prop $payload "size" ""))
+    Assert-ImageQuality $model ([string](Get-Prop $payload "quality" ""))
 
     $inputImages = New-Object System.Collections.ArrayList
     $imagesValue = Get-Prop $payload "images" $null
@@ -1676,11 +2012,7 @@ function Handle-ApiEdit($payload) {
         $apiPayload["mask"] = @{ image_url = $mask }
     }
 
-    $result = Invoke-Upstream $payload "/v1/images/edits" $apiPayload "edit"
-    if (-not [bool](Get-Prop $result "replayed" $false)) {
-        Append-HistoryRecord "edit" $(if ($null -ne $result.error) { "error" } else { "success" }) $payload $result
-    }
-    return $result
+    return Invoke-TrackedImageRequest $payload "/v1/images/edits" $apiPayload "edit"
 }
 
 function Handle-ApiTest($payload) {
@@ -1689,7 +2021,8 @@ function Handle-ApiTest($payload) {
     if ([string]::IsNullOrWhiteSpace($key) -and -not [string]::IsNullOrWhiteSpace($ApiKey)) {
         $key = $ApiKey
     }
-    if ($MockMode) {
+    $requestMock = Get-Prop $payload "mock" $MockMode
+    if (($requestMock -eq $true) -or ([string]$requestMock).Trim().ToLowerInvariant() -in @("1", "true", "yes", "on")) {
         return [ordered]@{ ok = $true; mock = $true; message = "Mock 模式已开启，跳过上游连接测试。"; config = (Get-ConfigSnapshot) }
     }
     if ([string]::IsNullOrWhiteSpace($key)) {
@@ -1729,10 +2062,10 @@ function Handle-ApiTest($payload) {
     }
 }
 
-$BaseUrlRaw = ConfigValue "OPENAI_BASE_URL" "https://api.henng.cn/"
+$BaseUrlRaw = ConfigValue "OPENAI_BASE_URL" "https://www.chichiapi.cn/"
 $BaseUrl = Normalize-BaseUrl $BaseUrlRaw
 $ApiKey = ConfigValue "OPENAI_API_KEY" ""
-$DefaultModel = ConfigValue "OPENAI_IMAGE_MODEL" "gpt-image-2"
+$DefaultModel = ConfigValue "OPENAI_IMAGE_MODEL" "gpt-image-2.5-flare"
 $RequestMode = (ConfigValue "IMAGEBOT_REQUEST_MODE" "auto").Trim().ToLowerInvariant()
 if ($RequestMode -notin @("auto", "basic", "full")) { $RequestMode = "auto" }
 $HostName = ConfigValue "IMAGE_WEBUI_HOST" "127.0.0.1"
@@ -1751,9 +2084,11 @@ $MaxUploadBytes = [int64]$MaxUploadMB * 1MB
 $MaxBodyBytes = [int64]$MaxBodyMB * 1MB
 $HistoryFile = Join-Path $OutputDir "history.jsonl"
 $LogFile = Join-Path $LogDir ("webui-" + (Get-Date -Format "yyyyMMdd") + ".log")
+$script:ActiveRequestIds = @{}
 
 Ensure-Directory $LogDir
-if ($SaveOutputs) { Ensure-Directory $OutputDir }
+Ensure-Directory $OutputDir
+[void](Recover-InterruptedHistoryRecords)
 
 $IndexHtmlTemplate = @'
 <!doctype html>
@@ -1862,7 +2197,7 @@ $IndexHtml = $IndexHtmlTemplate.
 function Send-HttpResponse($client, [int]$statusCode, [string]$contentType, [string]$body) {
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
     $reasonMap = @{
-        200 = "OK"; 400 = "Bad Request"; 404 = "Not Found"; 405 = "Method Not Allowed"; 413 = "Payload Too Large"; 500 = "Internal Server Error"; 502 = "Bad Gateway"; 504 = "Gateway Timeout"
+        200 = "OK"; 202 = "Accepted"; 400 = "Bad Request"; 404 = "Not Found"; 405 = "Method Not Allowed"; 413 = "Payload Too Large"; 500 = "Internal Server Error"; 502 = "Bad Gateway"; 504 = "Gateway Timeout"
     }
     $reason = "OK"
     if ($reasonMap.ContainsKey($statusCode)) { $reason = $reasonMap[$statusCode] }
@@ -2035,6 +2370,16 @@ function Route-Request($client, $req) {
         Send-Json $client 200 ([ordered]@{ items = @(Get-HistoryRecords 50) })
         return
     }
+    if ($method -eq "GET" -and $path -match '^/api/requests/([A-Za-z0-9._-]{8,100})$') {
+        $record = Get-HistoryRecordByRequestId ([Uri]::UnescapeDataString($Matches[1]))
+        if ($null -eq $record) { Send-Json $client 404 ([ordered]@{ error = [ordered]@{ message = "没有找到这次请求。" } }) }
+        else { Send-Json $client 200 ([ordered]@{ ok = $true; request = $record }) }
+        return
+    }
+    if ($method -eq "GET" -and $path -eq "/api/history/export") {
+        Send-Json $client 200 (Export-HistoryData)
+        return
+    }
     if ($method -eq "GET" -and $path -eq "/api/storage") {
         Send-Json $client 200 (Get-StorageSnapshot)
         return
@@ -2094,16 +2439,18 @@ function Route-Request($client, $req) {
     if ($method -eq "POST" -and $path -eq "/api/generate") {
         $payload = Parse-JsonBody $req.body
         $result = Handle-ApiGenerate $payload
-        $status = if ($null -ne $result.error) { [int]$result.error.status } else { 200 }
+        $status = if ($null -ne $result.error -and -not [bool](Get-Prop $result.error "retry_safe" $false)) { [int]$result.error.status } else { 200 }
         if ($status -lt 100 -or $status -gt 599) { $status = 502 }
+        if ([bool](Get-Prop $result "pending" $false)) { $status = 202 }
         Send-Json $client $status $result
         return
     }
     if ($method -eq "POST" -and $path -eq "/api/edit") {
         $payload = Parse-JsonBody $req.body
         $result = Handle-ApiEdit $payload
-        $status = if ($null -ne $result.error) { [int]$result.error.status } else { 200 }
+        $status = if ($null -ne $result.error -and -not [bool](Get-Prop $result.error "retry_safe" $false)) { [int]$result.error.status } else { 200 }
         if ($status -lt 100 -or $status -gt 599) { $status = 502 }
+        if ([bool](Get-Prop $result "pending" $false)) { $status = 202 }
         Send-Json $client $status $result
         return
     }

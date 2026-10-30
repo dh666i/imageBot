@@ -1180,14 +1180,14 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
     <details class="drawer-card" id="advancedSettings">
       <summary>高级设置<span>图片参数、模型、超时和演示模式</span></summary>
       <div class="drawer-details">
-        <label class="field"><span>模型</span><select id="modelPreset"><option value="">自定义模型</option></select></label>
+          <label class="field"><span>模型预设</span><select id="modelPreset"><option value="">自定义模型</option></select><small class="field-help" id="modelHelp">Flare 适合日常生图，Sunburst 适合精细编辑。</small></label>
         <label class="field"><span>模型名称</span><input id="model" value="%%MODEL%%" autocomplete="off" /></label>
         <div class="field-row">
-          <label class="field"><span>尺寸</span><select id="sizeInput"><option>1024x1024</option><option>1536x1024</option><option>1024x1536</option><option>2048x2048</option><option>2048x1152</option><option>auto</option></select></label>
+          <label class="field"><span>图片尺寸</span><input id="sizeInput" type="text" value="1024x1024" placeholder="例如 1536x864" autocomplete="off" /></label>
           <label class="field"><span>生成数量</span><select id="countInput"><option value="1">1 张</option><option value="2">2 张</option><option value="4">4 张</option></select></label>
         </div>
         <div class="field-row">
-          <label class="field"><span>清晰度</span><select id="qualityInput"><option value="high">高</option><option value="medium">中</option><option value="low">低</option><option value="auto">自动</option><option value="">默认</option></select></label>
+          <label class="field"><span>清晰度</span><select id="qualityInput"><option value="auto" selected>自动</option><option value="low">快速</option><option value="medium">标准</option><option value="high">高</option><option value="xhigh">极高</option><option value="max">最高</option></select></label>
           <label class="field"><span>背景</span><select id="backgroundInput"><option value="">默认</option><option value="auto">自动</option><option value="opaque">不透明</option><option value="transparent">透明</option></select></label>
         </div>
         <label class="field"><span>输出格式</span><select id="outputFormatInput"><option value="">默认</option><option>png</option><option>jpeg</option><option>webp</option></select></label>
@@ -1210,6 +1210,8 @@ input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
           <button class="btn" id="clearHistoryBtn">仅清空历史</button>
           <button class="btn danger" id="clearImagesBtn">清空图片和历史</button>
           <button class="btn danger wide" id="clearLogsBtn">清空运行日志</button>
+          <button class="btn wide" id="exportHistoryBtn">导出历史记录</button>
+          <button class="btn danger wide" id="clearAllBtn">清空图片、历史和日志</button>
         </div>
       </div>
     </details>
@@ -1258,6 +1260,8 @@ const state = {
   activeController: null,
   resultBatches: {},
   requestBatches: {},
+  editContext: null,
+  requestStates: {},
   nextBatchId: 1
 };
 
@@ -1340,6 +1344,7 @@ function humanError(message) {
   if (/abort|timeout|超时/i.test(text)) return "图片生成等待超时。请检查网络，或确认接口网关的等待时间已设置为 240 秒以上。\n\n详细信息：" + text;
   if (/Failed to fetch|连接.*失败|无法连接|actively refused/i.test(text)) return "无法连接到接口。请检查网络和接口地址，然后在设置中点击“测试连接”。";
   if (/非 JSON/i.test(text)) return "接口返回了无法识别的内容，可能是网关错误页面。请稍后重试或检查接口地址。\n\n详细信息：" + text;
+  if (/上次请求结果未确认|结果状态未知|仍在处理中|没有重复提交/i.test(text)) return "这次请求的结果还没有确认。为了避免重复扣费，工具暂时没有重新提交；请刷新后查看最近生成。";
   return text || "生成失败，请检查设置后重试。";
 }
 
@@ -1347,7 +1352,8 @@ function commonPayload() {
   const payload = {
     base_url: qs("baseUrl").value.trim(),
     api_key: qs("apiKey").value.trim(),
-    model: qs("model").value.trim()
+    model: qs("model").value.trim(),
+    mock: qs("mockMode").value === "1"
   };
   if (!payload.model && state.config) payload.model = state.config.model || "";
   payload.request_mode = qs("requestMode").value || (state.config && state.config.request_mode) || "auto";
@@ -1428,15 +1434,78 @@ function formatBytes(bytes) {
 }
 
 function qualityLabel(value) {
-  return ({ high: "高清", medium: "标准", low: "快速", auto: "自动", "": "默认" })[value] || value;
+  return ({ high: "高", medium: "标准", low: "快速", auto: "自动", xhigh: "极高", max: "最高", "": "默认" })[value] || value;
+}
+
+function isGptImage25(model = qs("model").value) {
+  return /^gpt-image-2\.5-(flare|sunburst)(-\d{4}-\d{2}-\d{2})?$/.test(String(model || "").trim());
+}
+
+function renderModelCapabilities() {
+  const supportsExtendedQuality = isGptImage25();
+  for (const value of ["xhigh", "max"]) {
+    const option = qs("qualityInput").querySelector(`option[value="${value}"]`);
+    option.disabled = !supportsExtendedQuality;
+  }
+  if (!supportsExtendedQuality && ["xhigh", "max"].includes(qs("qualityInput").value)) {
+    qs("qualityInput").value = "high";
+  }
+  const model = qs("model").value.trim();
+  qs("modelHelp").textContent = /sunburst/i.test(model)
+    ? "Sunburst：适合精细编辑、保留参考图细节。"
+    : /flare/i.test(model)
+      ? "Flare：适合日常生图，速度更快。"
+      : "自定义模型：能力和参数以接口服务商支持为准。";
+}
+
+function validateImageSize(model, size) {
+  const value = String(size || "").trim().toLowerCase();
+  if (!isGptImage25(model) || value === "auto") return;
+  const match = value.match(/^(\d{2,4})x(\d{2,4})$/);
+  if (!match) throw new Error("尺寸请填写宽x高，例如 1536x864；也可以填写 auto。");
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  const pixels = width * height;
+  const ratio = Math.max(width, height) / Math.min(width, height);
+  if (width % 16 || height % 16 || Math.max(width, height) > 3840 || ratio > 3 || pixels < 655360 || pixels > 8294400) {
+    throw new Error("GPT Image 2.5 尺寸要求：宽高为 16 的倍数，最长边不超过 3840，比例不超过 3:1，总像素为 655360 至 8294400。");
+  }
+}
+
+function confirmGenerationCost(request) {
+  const isMock = Boolean(request.common.mock);
+  if (isMock) return true;
+  const onceKey = `imagebot-cost-notice-${APP_VERSION}`;
+  const count = Number(request.options.n || 1);
+  const quality = request.options.quality || "auto";
+  const model = request.common.model || "";
+  const dims = String(request.options.size || "auto").match(/^(\d+)x(\d+)$/);
+  const pixels = dims ? Number(dims[1]) * Number(dims[2]) : 0;
+  const isHigherCost = count > 1 || ["xhigh", "max"].includes(quality) || pixels > 2500000;
+  const key = `${model}|${count}|${request.options.size || "auto"}|${quality}`;
+  if (!sessionStorage.getItem(onceKey)) {
+    const detail = isHigherCost
+      ? `本次为 ${model}，${count} 张，${request.options.size || "auto"}，${qualityLabel(quality)}清晰度。\n\n高张数、高分辨率或高质量可能增加等待时间和费用。`
+      : "图片生成可能产生接口费用。";
+    if (!confirm(`${detail}\n实际金额由你的接口服务商决定，继续前请确认你了解自己的费率。`)) return false;
+    sessionStorage.setItem(onceKey, "confirmed");
+    if (isHigherCost) sessionStorage.setItem("imagebot-cost-ack", key);
+    return true;
+  }
+  if (!isHigherCost || sessionStorage.getItem("imagebot-cost-ack") === key) return true;
+  const size = request.options.size || "auto";
+  const accepted = confirm(`本次将使用 ${model}，${count} 张，${size}，${qualityLabel(quality)}清晰度。\n\n多张、高分辨率或高质量可能增加等待时间和费用，实际金额由你的接口服务商决定。继续生成吗？`);
+  if (accepted) sessionStorage.setItem("imagebot-cost-ack", key);
+  return accepted;
 }
 
 function renderOptionSummary() {
   const count = Number(qs("countInput").value || 1);
   qs("composerConfigSummary").textContent = `${count} 张 · ${qualityLabel(qs("qualityInput").value)}`;
   for (const button of document.querySelectorAll(".size-preset")) {
-    button.classList.toggle("active", button.dataset.size === qs("sizeInput").value);
+    button.classList.toggle("active", button.dataset.size === qs("sizeInput").value.trim());
   }
+  renderModelCapabilities();
 }
 
 function applyHistoryOptions(item) {
@@ -1447,8 +1516,25 @@ function applyHistoryOptions(item) {
   if (item.background !== undefined) qs("backgroundInput").value = item.background || "";
   if (item.output_format !== undefined) qs("outputFormatInput").value = item.output_format || "";
   if (item.request_mode) qs("requestMode").value = item.request_mode;
+  if (item.model) syncModelPreset(item.model);
   renderOptionSummary();
   renderConfig();
+}
+
+function syncModelPreset(model) {
+  const select = qs("modelPreset");
+  select.value = Array.from(select.options).some(option => option.value === model) ? model : "";
+}
+
+function modelPresetLabel(model) {
+  const labels = {
+    "gpt-image-2.5-flare": "GPT Image 2.5 Flare · 日常生图",
+    "gpt-image-2.5-flare-2026-09-08": "GPT Image 2.5 Flare · 固定版本",
+    "gpt-image-2.5-sunburst": "GPT Image 2.5 Sunburst · 精细编辑",
+    "gpt-image-2.5-sunburst-2026-09-08": "GPT Image 2.5 Sunburst · 固定版本",
+    "gpt-image-2": "GPT Image 2"
+  };
+  return labels[model] || model;
 }
 
 function addMessage(role, html) {
@@ -1497,7 +1583,10 @@ function appendFiles(files) {
 }
 
 function renderFiles() {
-  qs("fileStrip").innerHTML = state.files.map((item, index) => `
+  const context = state.editContext
+    ? `<span class="file-pill"><span>修改第 ${Number(state.editContext.revision || 1) + 1} 版 · 参考图已载入</span><button type="button" onclick="clearEditContext()" title="取消版本关联">x</button></span>`
+    : "";
+  qs("fileStrip").innerHTML = context + state.files.map((item, index) => `
     <span class="file-pill">
       <img src="${attr(item.url)}" alt="">
       <span title="${attr(item.file.name)}">${esc(item.file.name)}</span>
@@ -1575,7 +1664,12 @@ async function requestJSON(path, payload, options = {}) {
       throw new Error(`服务端返回非 JSON：HTTP ${response.status}`);
     }
     rawEl.textContent = JSON.stringify(body, null, 2);
-    if (!response.ok || body.error) throw new Error((body.error && body.error.message) || body.message || `HTTP ${response.status}`);
+    if (!response.ok || body.error) {
+      const error = new Error((body.error && body.error.message) || body.message || `HTTP ${response.status}`);
+      error.status = response.status;
+      error.body = body;
+      throw error;
+    }
     setProgress(100);
     return body;
   } catch (error) {
@@ -1586,7 +1680,12 @@ async function requestJSON(path, payload, options = {}) {
     const message = humanError(rawMessage);
     state.lastError = message + "\n\n" + rawEl.textContent;
     showToast(message);
-    throw new Error(message);
+    const normalized = new Error(message);
+    normalized.status = error.status;
+    normalized.body = error.body || {
+      outcome_unknown: Boolean(generationRequest && (error.name === "AbortError" || error instanceof TypeError))
+    };
+    throw normalized;
   } finally {
     clearInterval(timer);
     clearTimeout(abortTimer);
@@ -1627,6 +1726,7 @@ function imageResult(images, meta = {}) {
       }).join("")}
     </div>
     ${meta.history ? `<div class="result-tools" style="margin-top:12px"><button class="small-btn" onclick="reusePromptFromOpenHistory()">再次使用提示词</button></div>` : ""}
+    ${meta.historyItem ? historyVersionNavigation(meta.historyItem) : ""}
   `;
 }
 
@@ -1635,14 +1735,28 @@ function loadingHtml(filesCount) {
   return `<span class="typing"><span class="spinner"></span>${mode}，通常需要几十秒。你可以在输入框下方查看等待时间。</span>`;
 }
 
-function errorHtml(message, request = null) {
+function canOfferBasicRetry(message) {
+  return /unsupported|unknown|unrecognized|invalid/i.test(String(message || "")) && /parameter|field|quality|background|format|compression/i.test(String(message || ""));
+}
+
+function unknownRequestHtml(request) {
+  const requestId = `unknown-${state.nextBatchId++}`;
+  state.requestBatches[requestId] = request;
+  return `<div class="error-card"><b>结果状态未确认</b><pre>上游可能已经完成请求。为避免重复计费，ImageBot 不会自动重发。</pre><div class="result-tools"><button class="small-btn" onclick="refreshRequestStatus('${attr(request.requestId)}')">查询结果</button><button class="small-btn" onclick="retryUnknownRequest('${requestId}')">确认后用新请求重试</button></div></div>`;
+}
+
+function errorHtml(message, request = null, options = {}) {
   const requestId = request ? `request-${state.nextBatchId++}` : "";
   if (requestId) state.requestBatches[requestId] = request;
+  const safeRetry = Boolean(options.retrySafe);
+  const outcomeUnknown = Boolean(options.outcomeUnknown);
   return `<div class="error-card">
     <b>生成失败</b>
     <pre>${esc(message)}</pre>
     <div class="result-tools">
-      ${requestId ? `<button class="small-btn" onclick="retryRequest('${requestId}')">重试这次生成</button>` : ""}
+      ${requestId && safeRetry && canOfferBasicRetry(message) && request.common.request_mode !== "basic" ? `<button class="small-btn" onclick="retryBasicRequest('${requestId}')">移除高级参数重试</button>` : ""}
+      ${requestId && outcomeUnknown ? `<button class="small-btn" onclick="retryUnknownRequest('${requestId}')">确认后用新请求重试</button>` : ""}
+      ${requestId && safeRetry && !canOfferBasicRetry(message) ? `<button class="small-btn" onclick="retryRequest('${requestId}')">安全重试</button>` : ""}
       <button class="small-btn" onclick="openDrawer()">检查设置</button>
       <button class="small-btn" onclick="copyLastError()">复制错误</button>
     </div>
@@ -1654,6 +1768,8 @@ function captureRequest() {
   if (!prompt) throw new Error("请先输入想生成什么图片。");
   return {
     requestId: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `imagebot-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    parentRequestId: state.editContext ? state.editContext.parentRequestId : "",
+    rootRequestId: state.editContext ? state.editContext.rootRequestId : "",
     prompt,
     files: state.files.slice(),
     options: optionPayload(),
@@ -1663,6 +1779,8 @@ function captureRequest() {
 
 async function submitRequest(request, fromRetry = false) {
   if (state.busy) return;
+  validateImageSize(request.common.model, request.options.size);
+  if (!fromRetry && !confirmGenerationCost(request)) return;
   request.userAborted = false;
   state.lastRequest = request;
   setBusy(true);
@@ -1674,7 +1792,7 @@ async function submitRequest(request, fromRetry = false) {
   const assistantMessage = addMessage("assistant", loadingHtml(request.files.length));
 
   try {
-    const payload = compact({ ...request.common, ...request.options, prompt: request.prompt, request_id: request.requestId });
+    const payload = compact({ ...request.common, ...request.options, prompt: request.prompt, request_id: request.requestId, parent_request_id: request.parentRequestId });
     let path = "/api/generate";
     if (request.files.length) {
       path = "/api/edit";
@@ -1683,15 +1801,41 @@ async function submitRequest(request, fromRetry = false) {
     qs("generationTitle").textContent = request.files.length ? `正在参考 ${request.files.length} 张图片生成` : "正在生成图片";
     qs("generationTimer").textContent = "已等待 0 秒，请不要关闭窗口";
     const body = await requestJSON(path, payload, { generation: true, userAbort: () => request.userAborted });
+    if (body.pending) {
+      updateMessage(assistantMessage, unknownRequestHtml(request));
+      void waitForRequestResult(request, assistantMessage);
+      return;
+    }
+    if (body.error) {
+      const errorHtmlValue = body.outcome_unknown
+        ? unknownRequestHtml(request)
+        : errorHtml(body.error.message || "生成失败", request, { retrySafe: body.retry_safe, outcomeUnknown: body.outcome_unknown });
+      updateMessage(assistantMessage, errorHtmlValue);
+      return;
+    }
+    request.rootRequestId = body.root_request_id || request.rootRequestId || request.requestId;
+    request.revision = body.revision || request.revision || 1;
     updateMessage(assistantMessage, imageResult(body.images, { request, replayed: body.replayed }));
     qs("promptInput").value = "";
     autoSizePrompt();
     if (!fromRetry || request.files === state.files) {
       clearSelectedFiles(true);
     }
+    if (state.editContext && state.editContext.parentRequestId === request.parentRequestId) {
+      state.editContext = null;
+      renderFiles();
+      qs("promptInput").placeholder = "描述想生成或修改的图片";
+    }
     await loadHistory();
+    const savedRecord = state.historyItems.find(item => item && item.request_id === request.requestId);
+    if (savedRecord) updateMessage(assistantMessage, imageResult(body.images, { request, historyItem: savedRecord, replayed: body.replayed }));
   } catch (error) {
-    updateMessage(assistantMessage, errorHtml(error.message || String(error), request));
+    const body = error.body || {};
+    if (body.outcome_unknown || (error.status >= 500 && error.status !== 501)) {
+      updateMessage(assistantMessage, unknownRequestHtml(request));
+    } else {
+      updateMessage(assistantMessage, errorHtml(error.message || String(error), request, { retrySafe: body.retry_safe, outcomeUnknown: body.outcome_unknown }));
+    }
     if (request.userAborted) {
       setBusy(true);
       qs("generationTitle").textContent = "后台请求仍在处理中";
@@ -1716,24 +1860,35 @@ async function waitForRequestResult(request, assistantMessage) {
   const deadline = Date.now() + (Math.max(60, state.timeoutSec + 30) * 1000);
   while (Date.now() < deadline) {
     try {
-      const response = await fetch("/api/history?limit=50", { cache: "no-store" });
+      const response = await fetch(`/api/requests/${encodeURIComponent(request.requestId)}`, { cache: "no-store" });
+      if (response.status === 404) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        continue;
+      }
       const body = await response.json();
-      const item = arr(body.items).find(entry => entry && entry.request_id === request.requestId);
+      const item = body.request;
       if (item && item.status === "success") {
+        request.rootRequestId = item.root_request_id || request.requestId;
+        request.revision = Number(item.revision || 1);
         updateMessage(assistantMessage, imageResult(item.images, { request, replayed: true }));
         await loadHistory();
         showToast("后台生成已完成，结果已经恢复。");
         return true;
       }
+      if (item && item.status === "unknown") {
+        updateMessage(assistantMessage, unknownRequestHtml(request));
+        await loadHistory();
+        return false;
+      }
       if (item && item.status === "error") {
-        updateMessage(assistantMessage, errorHtml(item.error || "后台生成失败。", request));
+        updateMessage(assistantMessage, errorHtml(item.error || "后台生成失败。", request, { retrySafe: item.retry_safe }));
         await loadHistory();
         return true;
       }
     } catch {}
     await new Promise(resolve => setTimeout(resolve, 1800));
   }
-  updateMessage(assistantMessage, `<div class="error-card"><b>暂时没有读到结果</b><pre>后台请求可能仍在处理。刷新页面后可以从左侧“最近生成”查看结果。</pre></div>`);
+  updateMessage(assistantMessage, unknownRequestHtml(request));
   return false;
 }
 
@@ -1776,6 +1931,40 @@ window.retryRequest = async requestId => {
   await submitRequest(request, true);
 };
 
+window.retryBasicRequest = async requestId => {
+  const request = state.requestBatches[requestId];
+  if (!request) return;
+  request.common = { ...request.common, request_mode: "basic" };
+  await submitRequest(request, true);
+};
+
+window.retryUnknownRequest = async requestId => {
+  const previous = state.requestBatches[requestId];
+  if (!previous) return;
+  if (!confirm("上次请求结果无法确认。重新生成可能再次扣费。确定使用新请求重新生成吗？")) return;
+  const request = {
+    ...previous,
+    requestId: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `imagebot-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    parentRequestId: previous.parentRequestId || previous.requestId,
+    rootRequestId: previous.rootRequestId || previous.requestId,
+    files: [...(previous.files || [])],
+    options: { ...previous.options },
+    common: { ...previous.common },
+    userAborted: false
+  };
+  await submitRequest(request, true);
+};
+
+window.refreshRequestStatus = async requestId => {
+  const request = Object.values(state.requestBatches).find(item => item && item.requestId === requestId);
+  if (!request) {
+    showToast("请求信息不在当前页面，请从左侧历史记录查看状态。");
+    return;
+  }
+  const assistant = addMessage("assistant", `<span class="typing"><span class="spinner"></span>正在查询生成状态</span>`);
+  await waitForRequestResult(request, assistant);
+};
+
 function renderConfig() {
   const cfg = state.config;
   if (!cfg) return;
@@ -1787,8 +1976,6 @@ function renderConfig() {
   const dotClass = state.busy ? "warn" : mock ? "warn" : hasKey ? "" : "bad";
   const base = qs("baseUrl").value || cfg.base_url || "";
   const model = qs("model").value || cfg.model || "";
-  qs("requestMode").value = cfg.request_mode || qs("requestMode").value || "auto";
-
   qs("keyStatus").innerHTML = `<span class="dot ${dotClass}"></span><span>${statusText}</span>`;
   qs("topStatus").innerHTML = `<span class="dot ${dotClass}"></span><span>${statusText}</span>`;
   qs("baseStatus").innerHTML = `<span class="dot"></span><span>${esc(base)}</span>`;
@@ -1817,7 +2004,7 @@ async function loadConfig() {
     qs("timeoutSecInput").value = state.timeoutSec;
     qs("mockMode").value = cfg.mock ? "1" : "0";
     const presets = arr(cfg.model_presets);
-    qs("modelPreset").innerHTML = `<option value="">自定义模型</option>${presets.map(item => `<option value="${attr(item)}">${esc(item)}</option>`).join("")}`;
+    qs("modelPreset").innerHTML = `<option value="">自定义模型</option>${presets.map(item => `<option value="${attr(item)}">${esc(modelPresetLabel(item))}</option>`).join("")}`;
     qs("modelPreset").value = presets.includes(cfg.model) ? cfg.model : "";
     qs("requestMode").value = cfg.request_mode || "auto";
     renderConfig();
@@ -1830,6 +2017,8 @@ async function loadConfig() {
 function statusText(item) {
   if (item.status === "success") return "成功";
   if (item.status === "error") return "失败";
+  if (item.status === "processing") return "处理中";
+  if (item.status === "unknown") return "待确认";
   return item.status || "未知";
 }
 
@@ -1847,7 +2036,7 @@ async function loadHistory() {
         : `<div class="thumb-empty"></div>`;
       return `<div class="history-item" role="button" tabindex="0" onclick="openHistory(${index})" onkeydown="historyKey(event,${index})">
         <div class="thumbs">${thumbs}</div>
-        <div class="history-copy"><strong>${esc(item.prompt || "无提示词")}</strong><small>${esc(item.time || "")} · ${esc(statusText(item))}</small></div>
+        <div class="history-copy"><strong>${Number(item.revision || 1) > 1 ? `第 ${Number(item.revision)} 版 · ` : ""}${esc(item.prompt || "无提示词")}</strong><small>${esc(item.time || "")} · ${esc(statusText(item))}</small></div>
         <button class="history-delete" onclick="deleteHistory(event,${index})" title="删除这条">x</button>
       </div>`;
     }).join("") : `<div class="empty-history">暂无历史。生成完成后，会自动出现在这里。</div>`;
@@ -1865,7 +2054,46 @@ window.historyKey = (event, index) => {
 
 let openedHistoryPrompt = "";
 let openedHistoryItem = null;
-window.openHistory = index => {
+async function restoreHistoryFiles(item) {
+  const files = [];
+  for (const image of arr(item && item.input_images)) {
+    const src = image.local_url || image.src;
+    if (!src) continue;
+    try {
+      const response = await fetch(src);
+      if (!response.ok) continue;
+      const blob = await response.blob();
+      const filename = image.filename || `参考图-${files.length + 1}.${(image.mime_type || blob.type).split("/").pop() || "png"}`;
+      const file = new File([blob], filename, { type: image.mime_type || blob.type || "image/png" });
+      files.push({ file, url: URL.createObjectURL(file), id: `history-${files.length}-${Date.now()}` });
+    } catch {}
+  }
+  return files;
+}
+
+window.clearEditContext = () => {
+  state.editContext = null;
+  clearSelectedFiles();
+  qs("promptInput").placeholder = "描述想生成或修改的图片";
+};
+
+function historyVersionNavigation(item) {
+  if (!item || !item.request_id) return "";
+  const parent = state.historyItems.find(candidate => candidate.request_id === item.parent_request_id);
+  const children = state.historyItems.filter(candidate => candidate.parent_request_id === item.request_id);
+  const controls = [];
+  if (parent) controls.push(`<button class="small-btn" onclick="openHistoryById('${attr(parent.request_id)}')">上一版：第 ${Number(parent.revision || 1)} 版</button>`);
+  for (const child of children) controls.push(`<button class="small-btn" onclick="openHistoryById('${attr(child.request_id)}')">查看第 ${Number(child.revision || 1)} 版</button>`);
+  if (!controls.length) return "";
+  return `<div class="result-tools" style="margin-top:10px"><span>版本记录</span>${controls.join("")}</div>`;
+}
+
+window.openHistoryById = requestId => {
+  const index = state.historyItems.findIndex(item => item && item.request_id === requestId);
+  if (index >= 0) void window.openHistory(index);
+};
+
+window.openHistory = async index => {
   const item = state.historyItems[index];
   if (!item) return;
   closeSidebar();
@@ -1873,25 +2101,45 @@ window.openHistory = index => {
   hero.classList.add("hidden");
   openedHistoryPrompt = item.prompt || "";
   openedHistoryItem = item;
+  state.editContext = null;
   applyHistoryOptions(item);
-  addMessage("user", `${esc(openedHistoryPrompt)}<div class="meta">历史记录 · ${esc(item.time || "")}</div>`);
+  const savedInputs = await restoreHistoryFiles(item);
+  state.messageUrls.push(...savedInputs.map(file => file.url));
+  addMessage("user", `${esc(openedHistoryPrompt)}${attachmentGrid(savedInputs)}<div class="meta">历史记录 · ${esc(item.time || "")} · 第 ${Number(item.revision || 1)} 版</div>`);
+  const historyRequest = {
+    requestId: item.request_id,
+    rootRequestId: item.root_request_id || item.request_id,
+    parentRequestId: item.parent_request_id || "",
+    revision: Number(item.revision || 1),
+    prompt: openedHistoryPrompt,
+    files: savedInputs,
+    options: compact({
+      size: item.size || "",
+      n: Number(item.requested_count || item.image_count || 1),
+      quality: item.quality || "",
+      background: item.background || "",
+      output_format: item.output_format || ""
+    }),
+    common: compact({ model: item.model || "", request_mode: item.request_mode || "auto" })
+  };
   const images = arr(item.images);
   if (item.status === "success" && images.length) {
-    const historyRequest = {
-      prompt: openedHistoryPrompt,
-      files: [],
-      options: compact({
-        size: item.size || "",
-        n: Number(item.image_count || 1),
-        quality: item.quality || "",
-        background: item.background || "",
-        output_format: item.output_format || ""
-      }),
-      common: compact({ model: item.model || "" })
-    };
-    addMessage("assistant", imageResult(images, { history: true, request: historyRequest }));
+    addMessage("assistant", imageResult(images, { history: true, request: historyRequest, historyItem: item }));
+  } else if (["processing", "unknown"].includes(item.status)) {
+    const unknownRequest = { ...historyRequest, requestId: item.request_id };
+    const internalId = `unknown-${state.nextBatchId++}`;
+    state.requestBatches[internalId] = unknownRequest;
+    const resumeButton = item.status === "processing"
+      ? `<button class="small-btn" onclick="refreshRequestStatus('${attr(item.request_id)}')">查询状态</button>`
+      : `<button class="small-btn" onclick="retryUnknownRequest('${internalId}')">确认后用新请求重试</button>`;
+    addMessage("assistant", `<div class="error-card"><b>${item.status === "processing" ? "请求正在处理中" : "上次结果未确认"}</b><pre>${esc(item.error || "为避免重复计费，ImageBot 不会自动重发。")}</pre><div class="result-tools">${resumeButton}</div></div>`);
+  } else if (item.status === "error") {
+    const internalId = `request-${state.nextBatchId++}`;
+    state.requestBatches[internalId] = historyRequest;
+    const retrySafe = Boolean(item.retry_safe);
+    addMessage("assistant", `<div class="error-card"><b>这次生成失败</b><pre>${esc(item.error || "")}</pre><div class="result-tools">${retrySafe ? `<button class="small-btn" onclick="retryRequest('${internalId}')">安全重试</button>` : ""}<button class="small-btn" onclick="reusePromptFromOpenHistory()">重新填写</button></div></div>`);
   } else {
-    addMessage("assistant", errorHtml(item.error || "这条历史没有可显示图片。"));
+    addMessage("assistant", `<div class="error-card"><b>没有可显示的结果</b><pre>${esc(item.error || "这条历史没有保存图片。")}</pre><button class="small-btn" onclick="reusePromptFromOpenHistory()">重新填写</button></div>`);
   }
 };
 
@@ -2108,10 +2356,11 @@ async function loadStorage() {
     const body = await response.json();
     if (!response.ok || body.error) throw new Error((body.error && body.error.message) || `HTTP ${response.status}`);
     qs("storageSummary").innerHTML = `
-      <div class="storage-stat"><b>生成图片</b><span>${Number(body.images && body.images.files || 0)} 个文件 · ${formatBytes(body.images && body.images.bytes)}</span></div>
+      <div class="storage-stat"><b>图片与参考图</b><span>${Number(body.images && body.images.files || 0)} 个文件 · ${formatBytes(body.images && body.images.bytes)}</span></div>
       <div class="storage-stat"><b>运行日志</b><span>${Number(body.logs && body.logs.files || 0)} 个文件 · ${formatBytes(body.logs && body.logs.bytes)}</span></div>
       <div class="storage-stat"><b>历史记录</b><span>${Number(body.history_records || 0)} 条</span></div>
       <div class="storage-stat"><b>合计占用</b><span>${formatBytes(body.total_bytes)}</span></div>`;
+    state.storageSnapshot = body;
   } catch (error) {
     qs("storageSummary").innerHTML = `<div class="storage-stat"><b>读取失败</b><span>${esc(error.message || error)}</span></div>`;
   }
@@ -2121,19 +2370,38 @@ async function clearStorage(target) {
   const prompts = {
     history: "确认只清空历史记录？已经保存的图片不会删除。",
     images: "确认删除所有已生成图片和历史记录？此操作无法撤销。",
-    logs: "确认清空运行日志？排查旧问题时将无法再查看这些日志。"
+    logs: "确认清空运行日志？排查旧问题时将无法再查看这些日志。",
+    all: `确认彻底清空本机图片、历史和日志？\n图片 ${Number(state.storageSnapshot && state.storageSnapshot.images && state.storageSnapshot.images.files || 0)} 个 · 历史 ${Number(state.storageSnapshot && state.storageSnapshot.history_records || 0)} 条 · 日志 ${Number(state.storageSnapshot && state.storageSnapshot.logs && state.storageSnapshot.logs.files || 0)} 个\n接口配置与版本恢复备份会保留。此操作无法撤销。`
   };
   if (!confirm(prompts[target] || "确认清理？")) return;
   try {
     await postSimple("/api/storage/clear", { target });
-    if (target === "history" || target === "images") {
+    if (["history", "images", "all"].includes(target)) {
       resetChat();
       await loadHistory();
     }
     await loadStorage();
-    showToast(target === "images" ? "图片和历史已清空" : target === "logs" ? "日志已清空" : "历史已清空");
+    showToast(target === "all" ? "全部本地数据已清空" : target === "images" ? "图片和历史已清空" : target === "logs" ? "日志已清空" : "历史已清空");
   } catch (error) {
     showToast(`清理失败：${error.message || error}`);
+  }
+}
+
+async function exportHistory() {
+  try {
+    const response = await fetch("/api/history/export", { cache: "no-store" });
+    const body = await response.json();
+    if (!response.ok || body.error) throw new Error((body.error && body.error.message) || `HTTP ${response.status}`);
+    const blob = new Blob([JSON.stringify(body, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ImageBot-history-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast("历史记录已导出，文件不包含接口密钥。");
+  } catch (error) {
+    showToast(`导出失败：${error.message || error}`);
   }
 }
 
@@ -2192,9 +2460,22 @@ window.editResultImage = async (batchId, index) => {
     const blob = await response.blob();
     const normalized = await normalizeResultBlob(blob, item.filename || "image.png");
     const file = new File([normalized.blob], normalized.filename, { type: normalized.type });
-    appendFiles([file]);
     const request = state.requestBatches[batchId];
-    if (request && request.prompt) qs("promptInput").value = request.prompt;
+    appendFiles([file]);
+    const requestId = request && (request.rootRequestId || request.requestId);
+    const parentRequestId = request && request.requestId;
+    if (requestId && parentRequestId) {
+      state.editContext = {
+        rootRequestId: requestId,
+        parentRequestId,
+        revision: Number(request.revision || 1)
+      };
+      renderFiles();
+      qs("promptInput").value = "";
+      qs("promptInput").placeholder = `描述如何修改第 ${Number(request.revision || 1)} 版`;
+    } else if (request && request.prompt) {
+      qs("promptInput").value = request.prompt;
+    }
     autoSizePrompt();
     qs("promptInput").focus();
     showToast("已把这张图片加入参考图，可以继续描述怎么修改。");
@@ -2401,6 +2682,8 @@ qs("copyErrorBtn").addEventListener("click", window.copyLastError);
 qs("clearHistoryBtn").addEventListener("click", () => clearStorage("history"));
 qs("clearImagesBtn").addEventListener("click", () => clearStorage("images"));
 qs("clearLogsBtn").addEventListener("click", () => clearStorage("logs"));
+qs("exportHistoryBtn").addEventListener("click", exportHistory);
+qs("clearAllBtn").addEventListener("click", () => clearStorage("all"));
 qs("moreSettingsBtn").addEventListener("click", () => {
   openDrawer();
   qs("advancedSettings").open = true;
@@ -2415,6 +2698,7 @@ for (const button of document.querySelectorAll(".size-preset")) {
 
 for (const id of ["baseUrl", "apiKey", "model", "timeoutSecInput", "mockMode", "sizeInput", "countInput", "qualityInput", "backgroundInput", "outputFormatInput"]) {
   qs(id).addEventListener("input", () => {
+    if (id === "model") syncModelPreset(qs("model").value.trim());
     state.timeoutSec = Number(qs("timeoutSecInput").value || state.timeoutSec || 240);
     renderConfig();
     renderOptionSummary();
