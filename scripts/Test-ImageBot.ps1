@@ -101,8 +101,8 @@ try {
 
     if (-not $SkipUpdaterTests) {
         & (Join-Path $PSScriptRoot "Test-Updater.ps1") -Root $Root
-        & (Join-Path $PSScriptRoot "Test-UpstreamResponses.ps1") -Root $Root
     }
+    & (Join-Path $PSScriptRoot "Test-UpstreamResponses.ps1") -Root $Root
 
     $appDir = Join-Path $testRoot "app"
     New-Item -ItemType Directory -Path $appDir -Force | Out-Null
@@ -134,31 +134,45 @@ IMAGE_WEBUI_MOCK=1
         -WorkingDirectory $appDir -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru
 
     $baseUrl = "http://127.0.0.1:$port"
-    $health = $null
+    $startupHistory = $null
     $deadline = (Get-Date).AddSeconds(30)
     while ((Get-Date) -lt $deadline) {
         try {
-            $health = Invoke-RestMethod -Uri "$baseUrl/api/health" -Method Get -TimeoutSec 2
-            if ($health.ok) { break }
+            # History must work before another endpoint can load its dependencies.
+            $startupHistory = Invoke-RestMethod -Uri "$baseUrl/api/history?limit=1" -Method Get -TimeoutSec 5
+            break
         } catch {
+            if ($null -ne $_.Exception.Response) { throw }
             if ($server.HasExited) { break }
             Start-Sleep -Milliseconds 250
         }
     }
-    if ($null -eq $health -or -not $health.ok) {
+    if ($null -eq $startupHistory) {
         $stderr = if (Test-Path -LiteralPath $stderrPath) { Get-Content -Raw -LiteralPath $stderrPath } else { "" }
         throw "Mock server did not become ready. $stderr"
     }
+    Assert-True ($null -ne $startupHistory.items -and @($startupHistory.items).Count -eq 0 -and $startupHistory.total -eq 0 -and -not $startupHistory.has_more) "first request to history returned an invalid empty page"
+    Write-Host "Fresh-process history-first check passed."
 
+    $health = Invoke-RestMethod -Uri "$baseUrl/api/health" -Method Get -TimeoutSec 5
+    Assert-True $health.ok "health endpoint is not ready after the history request"
     Assert-True ($health.config.version -eq ("v" + $appVersionMatch.Groups[1].Value)) "health endpoint returned the wrong version"
     Assert-True ([int]$health.config.timeout_sec -eq 240) "configured timeout is not 240 seconds"
     Assert-True ([int]$health.config.pid -eq $server.Id) "health endpoint returned the wrong process id"
     Assert-True ($health.config.base_url -eq "https://www.chichiapi.cn") "default base URL was not normalized to chichiapi.cn"
-    Assert-True ($health.config.model -eq "gpt-image-2.5-flare") "fresh configuration did not default to GPT Image 2.5 Flare"
+    Assert-True ($health.config.model -eq "gpt-image-2.5-flare") "existing configured Image 2.5 model was overwritten"
 
     $config = Invoke-RestMethod -Uri "$baseUrl/api/config" -Method Get -TimeoutSec 5
     Assert-True $config.mock "mock mode is not active"
     Assert-True $config.has_api_key "test customer key was not loaded"
+    Assert-True ($config.model_presets[0] -eq "gpt-image-2.6-flare" -and $config.model_presets[1] -eq "gpt-image-2.6-sunburst") "Image 2.6 presets were not first"
+    foreach ($model in @('gpt-image-2.6-flare', 'gpt-image-2.6-sunburst')) {
+        $caps = $config.model_capabilities.$model
+        Assert-True ($caps.supports_complexity -and $caps.default_complexity -eq 'high') "$model complexity capabilities are incorrect"
+        Assert-True (@($caps.qualities) -contains 'max' -and @($caps.qualities) -contains 'xhigh') "$model quality capabilities are incomplete"
+        Assert-True ($caps.size_constraints.min_pixels -eq 655360 -and $caps.size_constraints.max_pixels -eq 8294400) "$model size capabilities are incorrect"
+    }
+    Assert-True (-not $config.model_capabilities.'gpt-image-2.5-flare'.supports_complexity) "Image 2.5 incorrectly advertised complexity"
     Assert-True (@($config.model_presets) -contains "gpt-image-2.5-flare") "GPT Image 2.5 Flare model preset is missing"
     Assert-True (@($config.model_presets) -contains "gpt-image-2.5-sunburst") "GPT Image 2.5 Sunburst model preset is missing"
     Assert-True ($config.request_mode -eq "auto") "default request mode is incorrect"
@@ -184,20 +198,40 @@ IMAGE_WEBUI_MOCK=1
     Assert-True ($page.Content -match [regex]::Escape("v" + $appVersionMatch.Groups[1].Value)) "rendered page does not contain the current version"
     Assert-True ($page.Content -match 'id="modelPreset"' -and $page.Content -match 'id="requestMode"') "model compatibility controls are missing"
 
+    foreach ($route in @('generate', 'edit')) {
+        foreach ($invalidParameters in @(
+            @{ model = 'gpt-image-2.6-flare'; complexity = 'auto' },
+            @{ model = 'gpt-image-2.5-flare'; complexity = 'high' },
+            @{ model = 'gpt-image-2.6-sunburst'; quality = 'ultra' },
+            @{ model = 'gpt-image-2-2026-04-21'; quality = 'max' }
+        )) {
+            $invalidParameters.prompt = 'Invalid parameter test'
+            $invalidParameters.mock = $true
+            $invalidResult = Invoke-TestPost "$baseUrl/api/$route" $invalidParameters
+            Assert-True ($null -ne $invalidResult.error -and $invalidResult.error.status -eq 400) "$route did not reject invalid model parameters"
+        }
+    }
+
     $generation = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{
         prompt = "自动化测试图片"
-        model = "gpt-image-2"
+        model = "gpt-image-2.6-flare"
         size = "1024x1024"
         n = 2
+        quality = "max"
+        complexity = "medium"
         mock = $true
         request_id = "test-request-id-001"
     })
     Assert-True $generation.mock "generation did not use mock mode"
     Assert-True (@($generation.images).Count -eq 2) "generation did not return two images"
+    Assert-True ($generation.images[0].mime_type -eq 'image/png' -and $generation.images[0].src.StartsWith('data:image/png;base64,')) "demo generation did not return a reusable PNG"
+    Assert-True ($generation.request.model -eq 'gpt-image-2.6-flare' -and $generation.request.complexity -eq 'medium' -and $generation.request.quality -eq 'max') "Image 2.6 generation parameters were not forwarded"
+    $generationHistory = Invoke-RestMethod -Uri "$baseUrl/api/requests/test-request-id-001" -Method Get -TimeoutSec 5
+    Assert-True ($generationHistory.request.complexity -eq 'medium') "generation complexity was not stored in history"
 
     $replayed = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{
         prompt = "自动化测试图片"
-        model = "gpt-image-2"
+        model = "gpt-image-2.6-flare"
         size = "1024x1024"
         n = 2
         mock = $true
@@ -208,25 +242,27 @@ IMAGE_WEBUI_MOCK=1
 
     $basic = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{
         prompt = "基础兼容模式测试"
-        model = "gpt-image-2.5-flare"
+        model = "gpt-image-2.6-sunburst"
         size = "1024x1024"
         n = 1
         quality = "high"
+        complexity = "low"
         background = "transparent"
         output_format = "webp"
         request_mode = "basic"
         mock = $true
         request_id = "test-request-id-basic"
     })
-    Assert-True ($basic.request.model -eq "gpt-image-2.5-flare") "GPT Image 2.5 model was not forwarded"
-    Assert-True ($null -eq $basic.request.quality -and $null -eq $basic.request.background -and $null -eq $basic.request.output_format) "basic mode kept optional image fields"
+    Assert-True ($basic.request.model -eq "gpt-image-2.6-sunburst") "GPT Image 2.6 Sunburst model was not forwarded"
+    Assert-True ($null -eq $basic.request.quality -and $null -eq $basic.request.complexity -and $null -eq $basic.request.background -and $null -eq $basic.request.output_format) "basic mode kept optional image fields"
 
     $safeFailure = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{
         prompt = "安全降级重试测试"
-        model = "gpt-image-2.5-flare"
+        model = "gpt-image-2.6-flare"
         size = "1024x1024"
         quality = "max"
-        mock_error = "Unsupported parameter: quality"
+        complexity = "high"
+        mock_error = "Unsupported parameter: complexity"
         mock = $true
         request_id = "test-request-safe-001"
     })
@@ -256,34 +292,45 @@ IMAGE_WEBUI_MOCK=1
     Assert-True ($null -ne $unsafeDuplicate.error) "unsafe duplicate lost the original error"
     $safeRetry = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{
         prompt = "安全降级重试测试"
-        model = "gpt-image-2.5-flare"
+        model = "gpt-image-2.6-flare"
         size = "1024x1024"
+        complexity = "high"
         request_mode = "basic"
         mock = $true
         request_id = "test-request-safe-001"
     })
     Assert-True $safeRetry.mock "safe parameter retry did not complete"
+    Assert-True ($null -eq $safeRetry.request.complexity) "safe basic retry retained complexity"
     $safeRetryHistory = Invoke-RestMethod -Uri "$baseUrl/api/requests/test-request-safe-001" -Method Get -TimeoutSec 5
     Assert-True ($safeRetryHistory.request.status -eq "success") "safe retry did not finalize its history row"
 
-    $referenceData = "data:image/png;base64,$([Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes('reference image bytes')))"
+    $referenceData = $generation.images[0].src
     $edit = Invoke-TestPost "$baseUrl/api/edit" ([ordered]@{
         prompt = "把背景换成白色，主体保持不变"
-        model = "gpt-image-2.5-sunburst"
+        model = "gpt-image-2.6-sunburst"
         size = "1024x1024"
+        quality = "xhigh"
+        complexity = "low"
         images = @($referenceData)
         parent_request_id = "test-request-id-001"
         request_id = "test-request-edit-001"
         mock = $true
     })
     Assert-True $edit.mock "reference edit did not complete"
+    Assert-True ($edit.request.model -eq 'gpt-image-2.6-sunburst' -and $edit.request.complexity -eq 'low' -and $edit.request.quality -eq 'xhigh') "Image 2.6 edit parameters were not forwarded"
     $editHistory = Invoke-RestMethod -Uri "$baseUrl/api/requests/test-request-edit-001" -Method Get -TimeoutSec 5
     Assert-True ($editHistory.request.revision -eq 2) "edit history revision is incorrect"
     Assert-True ($editHistory.request.root_request_id -eq "test-request-id-001") "edit history root request was not linked"
     Assert-True (@($editHistory.request.input_images).Count -eq 1) "reference image was not saved with the history"
+    Assert-True ($editHistory.request.complexity -eq 'low') "edit complexity was not stored in history"
 
     $history = Invoke-RestMethod -Uri "$baseUrl/api/history" -Method Get -TimeoutSec 5
     Assert-True (@($history.items).Count -eq 5) "history endpoint did not keep one row per request and revision"
+    Assert-True ($history.total -eq 5 -and -not $history.has_more) "history page metadata is incorrect"
+    $shortHistory = Invoke-RestMethod -Uri "$baseUrl/api/history?limit=1" -Method Get -TimeoutSec 5
+    Assert-True ($shortHistory.items.Count -eq 1 -and $shortHistory.total -eq 5 -and $shortHistory.has_more) "history endpoint ignored the requested limit"
+    $largerHistory = Invoke-RestMethod -Uri "$baseUrl/api/history?limit=1000" -Method Get -TimeoutSec 5
+    Assert-True ($largerHistory.items.Count -eq 5 -and -not $largerHistory.has_more) "history could not load more records"
     $historyItem = @($history.items | Where-Object { $_.prompt -eq "自动化测试图片" } | Select-Object -First 1)
     Assert-True ($historyItem.Count -eq 1) "history prompt is incorrect"
 
@@ -296,13 +343,14 @@ IMAGE_WEBUI_MOCK=1
     Assert-True (-not ($export | ConvertTo-Json -Depth 50 -Compress).Contains("customer-secret")) "history export exposed a secret"
 
     [void](Invoke-TestPost "$baseUrl/api/config/save" ([ordered]@{ base_url = "https://www.chichiapi.cn/"; api_key = ""; model = "gpt-image-2.5-flare"; timeout_sec = 240; mock = $false; request_mode = "auto" }))
-    $unsavedDemo = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{ prompt = "未保存演示模式测试"; model = "gpt-image-2.5-flare"; size = "1024x1024"; mock = $true; request_id = "test-request-unsaved-mock" })
+    $unsavedDemo = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{ prompt = "未保存演示模式测试"; model = "gpt-image-2.6-flare"; size = "1024x1024"; mock = $true; request_id = "test-request-unsaved-mock" })
     Assert-True $unsavedDemo.mock "per-request demo mode did not override the saved setting"
+    Assert-True ($null -eq $unsavedDemo.request.complexity) "omitted complexity was unexpectedly sent to the upstream"
     [void](Invoke-TestPost "$baseUrl/api/config/save" ([ordered]@{ base_url = "https://www.chichiapi.cn/"; api_key = ""; model = "gpt-image-2.5-flare"; timeout_sec = 240; mock = $true; request_mode = "auto" }))
 
     $emptyResult = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{
         prompt = "空结果状态测试"
-        model = "gpt-image-2.5-flare"
+        model = "gpt-image-2.6-flare"
         size = "1024x1024"
         mock_empty_images = $true
         mock = $true
@@ -311,7 +359,7 @@ IMAGE_WEBUI_MOCK=1
     Assert-True $emptyResult.outcome_unknown "empty image response was not marked as unknown"
     $emptyHistory = Invoke-RestMethod -Uri "$baseUrl/api/requests/test-request-empty-001" -Method Get -TimeoutSec 5
     Assert-True ($emptyHistory.request.status -eq "unknown") "empty image response was not recorded as unknown"
-    $emptyReplay = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{ prompt = "空结果状态测试"; model = "gpt-image-2.5-flare"; size = "1024x1024"; mock = $true; request_id = "test-request-empty-001" })
+    $emptyReplay = Invoke-TestPost "$baseUrl/api/generate" ([ordered]@{ prompt = "空结果状态测试"; model = "gpt-image-2.6-flare"; size = "1024x1024"; complexity = 'low'; request_mode = 'basic'; mock = $true; request_id = "test-request-empty-001" })
     Assert-True $emptyReplay.pending "empty/unknown request was automatically repeated"
 
     $allDataClear = Invoke-TestPost "$baseUrl/api/storage/clear" ([ordered]@{ target = "all" })

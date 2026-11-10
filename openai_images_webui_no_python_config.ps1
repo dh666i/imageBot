@@ -46,7 +46,7 @@ function Read-ConfigFile([string]$path) {
 }
 
 $Config = Read-ConfigFile $ConfigPath
-$AppVersion = "v1.7.0"
+$AppVersion = "v1.8.0"
 $UpdateRepo = "dh666i/imageBot"
 $script:ShutdownRequested = $false
 
@@ -109,7 +109,7 @@ function Apply-RuntimeConfigFromFile {
     $script:BaseUrlRaw = ConfigValue "OPENAI_BASE_URL" "https://www.chichiapi.cn/"
     $script:BaseUrl = Normalize-BaseUrl $script:BaseUrlRaw
     $script:ApiKey = ConfigValue "OPENAI_API_KEY" ""
-    $script:DefaultModel = ConfigValue "OPENAI_IMAGE_MODEL" "gpt-image-2.5-flare"
+    $script:DefaultModel = ConfigValue "OPENAI_IMAGE_MODEL" "gpt-image-2.6-flare"
     $script:RequestMode = (ConfigValue "IMAGEBOT_REQUEST_MODE" "auto").Trim().ToLowerInvariant()
     if ($script:RequestMode -notin @("auto", "basic", "full")) { $script:RequestMode = "auto" }
     $script:HostName = ConfigValue "IMAGE_WEBUI_HOST" "127.0.0.1"
@@ -184,7 +184,7 @@ function HtmlAttr([string]$value) {
 }
 
 function To-JsonText($obj, [int]$depth = 30) {
-    return ($obj | ConvertTo-Json -Depth $depth -Compress)
+    return (ConvertTo-Json -InputObject $obj -Depth $depth -Compress)
 }
 
 function Get-PayloadKeys($obj) {
@@ -579,6 +579,7 @@ function Write-HistoryRecord([string]$action, [string]$status, $payload, $result
         size = [string](Get-Prop $payload "size" "")
         requested_count = [int](Get-Prop $payload "n" 1)
         quality = [string](Get-Prop $payload "quality" "")
+        complexity = ([string](Get-Prop $payload "complexity" "")).Trim().ToLowerInvariant()
         background = [string](Get-Prop $payload "background" "")
         output_format = [string](Get-Prop $payload "output_format" "")
         request_mode = [string](Get-Prop $payload "request_mode" $RequestMode)
@@ -660,8 +661,8 @@ function Set-PayloadRequestId($payload) {
 
 function Get-LocalRequestError($_error, [string]$requestId) {
     $status = Get-HttpExceptionStatus $_error.Exception
-    $message = [string]$_.Exception.Message
-    $retrySafe = ($status -in @(400, 422) -and $message -match '(?i)(unsupported|unknown|unrecognized|invalid).{0,40}(parameter|field|quality|background|format|compression)|(parameter|field|quality|background|format|compression).{0,40}(unsupported|unknown|unrecognized|invalid)')
+    $message = [string]$_error.Exception.Message
+    $retrySafe = Test-RetrySafeUpstreamError $status $message
     return [ordered]@{
             error = [ordered]@{ message = $message; status = $status; request_id = $requestId; retry_safe = $retrySafe; outcome_unknown = ($status -eq 408 -or $status -ge 500) }
         elapsed_ms = 0
@@ -672,7 +673,10 @@ function Get-LocalRequestError($_error, [string]$requestId) {
 }
 
 function Test-RetrySafeUpstreamError([int]$status, [string]$message) {
-    return ($status -in @(400, 422) -and $message -match '(?i)(unsupported|unknown|unrecognized|invalid).{0,40}(parameter|field|quality|background|format|compression)|(parameter|field|quality|background|format|compression).{0,40}(unsupported|unknown|unrecognized|invalid)')
+    if ($status -notin @(400, 422)) { return $false }
+    $optionalField = '\b(quality|complexity|background|output_format|output_compression)\b'
+    $rejection = '\b(unsupported|unknown|unrecognized|invalid|not supported|not allowed)\b'
+    return ($message -match "(?i)$rejection.{0,60}$optionalField|$optionalField.{0,60}$rejection")
 }
 
 function Invoke-TrackedImageRequest($payload, [string]$endpoint, $apiPayload, [string]$action) {
@@ -735,7 +739,7 @@ function Get-HistoryRecords([int]$limit) {
     if (-not (Test-Path -LiteralPath $HistoryFile)) {
         return @()
     }
-    $lines = Get-Content -LiteralPath $HistoryFile -Encoding UTF8
+    $lines = @(Get-Content -LiteralPath $HistoryFile -Encoding UTF8)
     if ($lines.Count -gt $limit) {
         $lines = $lines[($lines.Count - $limit)..($lines.Count - 1)]
     }
@@ -749,6 +753,25 @@ function Get-HistoryRecords([int]$limit) {
     $array = @($items.ToArray())
     [array]::Reverse($array)
     return @($array)
+}
+
+function Get-HistoryPage([string]$requestPath) {
+    Add-Type -AssemblyName System.Web
+    $uri = [Uri]("http://localhost" + $requestPath)
+    $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+    $limit = 50
+    if ($null -ne $query["limit"]) {
+        if (-not [int]::TryParse($query["limit"], [ref]$limit) -or $limit -lt 1) {
+            throw (New-HttpException 400 "历史记录数量必须是正整数。")
+        }
+        $limit = [Math]::Min($limit, 1000)
+    }
+    $records = @(Get-HistoryRecords ([int]::MaxValue))
+    return [ordered]@{
+        items = @($records | Select-Object -First $limit)
+        total = $records.Count
+        has_more = ($records.Count -gt $limit)
+    }
 }
 
 function Remove-HistoryRecord([string]$id) {
@@ -972,6 +995,13 @@ function Get-ConfigWarnings {
 }
 
 function Get-ConfigSnapshot {
+    $presets = @(Get-ModelPresets)
+    $capabilities = [ordered]@{}
+    foreach ($modelName in @($presets) + @($DefaultModel)) {
+        if (-not [string]::IsNullOrWhiteSpace($modelName)) {
+            $capabilities[$modelName] = Get-ImageModelCapabilities $modelName
+        }
+    }
     return [ordered]@{
         app = "GPT Image Web UI"
         version = $AppVersion
@@ -994,15 +1024,16 @@ function Get-ConfigSnapshot {
         force_response_format = $ForceResponseFormat
         include_stream_flag = $IncludeStreamFlag
         request_mode = $RequestMode
-        model_presets = @(Get-ModelPresets)
+        model_presets = $presets
+        model_capabilities = $capabilities
         warnings = @(Get-ConfigWarnings)
     }
 }
 
 function Get-ModelPresets {
-    $raw = ConfigValue "IMAGEBOT_MODEL_PRESETS" "gpt-image-2.5-flare,gpt-image-2.5-flare-2026-09-08,gpt-image-2.5-sunburst,gpt-image-2.5-sunburst-2026-09-08,gpt-image-2"
+    $raw = ConfigValue "IMAGEBOT_MODEL_PRESETS" ""
     $presets = New-Object System.Collections.ArrayList
-    foreach ($name in @("gpt-image-2.5-flare", "gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst", "gpt-image-2.5-sunburst-2026-09-08", "gpt-image-2")) {
+    foreach ($name in @("gpt-image-2.6-flare", "gpt-image-2.6-sunburst", "gpt-image-2.5-flare", "gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst", "gpt-image-2.5-sunburst-2026-09-08", "gpt-image-2")) {
         [void]$presets.Add($name)
     }
     foreach ($name in @($raw -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 })) {
@@ -1012,29 +1043,67 @@ function Get-ModelPresets {
     return @($presets.ToArray())
 }
 
+function Get-ImageModelCapabilities([string]$model) {
+    $name = ($model + "").Trim().ToLowerInvariant()
+    $image26 = $name -match '^gpt-image-2\.6-(flare|sunburst)$'
+    $image25 = $name -match '^gpt-image-2\.5-(flare|sunburst)(-\d{4}-\d{2}-\d{2})?$'
+    $image2 = $name -match '^gpt-image-2(-\d{4}-\d{2}-\d{2})?$'
+    $image1 = $name -match '^gpt-image-1(\.5|-mini)?(-\d{4}-\d{2}-\d{2})?$'
+    $qualities = @("auto", "low", "medium", "high")
+    if ($image26 -or $image25) { $qualities += @("xhigh", "max") }
+    $sizes = $null
+    if ($image26 -or $image25 -or $image2) {
+        $sizes = [ordered]@{ multiple_of = 16; max_side = 3840; max_ratio = 3; min_pixels = 655360; max_pixels = 8294400 }
+    }
+    return [ordered]@{
+        known = ($image26 -or $image25 -or $image2 -or $image1)
+        qualities = $qualities
+        supports_complexity = $image26
+        complexities = @(if ($image26) { "low"; "medium"; "high" })
+        default_complexity = $(if ($image26) { "high" } else { "" })
+        output_formats = @("png", "jpeg", "webp")
+        size_constraints = $sizes
+    }
+}
+
 function Test-GptImageModel([string]$model) {
-    return $model -match '^gpt-image-2(?:\.5-(?:flare|sunburst)(?:-\d{4}-\d{2}-\d{2})?)?$'
+    return $null -ne (Get-ImageModelCapabilities $model).size_constraints
 }
 
 function Assert-ImageSize([string]$model, [string]$size) {
     $value = ($size + "").Trim().ToLowerInvariant()
-    if ([string]::IsNullOrWhiteSpace($value) -or $value -eq "auto" -or -not (Test-GptImageModel $model)) { return }
+    $limits = (Get-ImageModelCapabilities $model).size_constraints
+    if ([string]::IsNullOrWhiteSpace($value) -or $value -eq "auto" -or $null -eq $limits) { return }
     if ($value -notmatch '^(\d{2,4})x(\d{2,4})$') {
         throw (New-HttpException 400 "图片尺寸应填写“宽x高”，例如 1536x864。")
     }
     $width = [int]$Matches[1]
     $height = [int]$Matches[2]
+    if ($width -eq 0 -or $height -eq 0) { throw (New-HttpException 400 "图片宽高必须大于零。") }
     $pixels = [long]$width * [long]$height
     $ratio = [double][Math]::Max($width, $height) / [double][Math]::Min($width, $height)
-    if (($width % 16) -ne 0 -or ($height % 16) -ne 0 -or [Math]::Max($width, $height) -gt 3840 -or $ratio -gt 3 -or $pixels -lt 655360 -or $pixels -gt 8294400) {
+    if (($width % $limits.multiple_of) -ne 0 -or ($height % $limits.multiple_of) -ne 0 -or [Math]::Max($width, $height) -gt $limits.max_side -or $ratio -gt $limits.max_ratio -or $pixels -lt $limits.min_pixels -or $pixels -gt $limits.max_pixels) {
         throw (New-HttpException 400 "GPT Image 尺寸需满足：宽高为 16 的倍数、最长边不超过 3840、比例不超过 3:1、总像素为 655360 至 8294400。")
     }
 }
 
 function Assert-ImageQuality([string]$model, [string]$quality) {
     $value = ($quality + "").Trim().ToLowerInvariant()
-    if ($value -in @("xhigh", "max") -and $model -notmatch '^gpt-image-2\.5-(flare|sunburst)(-\d{4}-\d{2}-\d{2})?$') {
-        throw (New-HttpException 400 "xhigh 和 max 清晰度仅适用于 GPT Image 2.5 Flare/Sunburst。")
+    $capabilities = Get-ImageModelCapabilities $model
+    if ($value.Length -gt 0 -and $capabilities.known -and $value -notin $capabilities.qualities) {
+        throw (New-HttpException 400 "当前模型不支持此清晰度，可选值：$($capabilities.qualities -join ', ')。")
+    }
+}
+
+function Assert-ImageComplexity([string]$model, [string]$complexity) {
+    $value = ($complexity + "").Trim().ToLowerInvariant()
+    if ($value.Length -eq 0) { return }
+    if ($value -notin @("low", "medium", "high")) {
+        throw (New-HttpException 400 "复杂度可选值为 low、medium、high，留空使用模型默认值。")
+    }
+    $capabilities = Get-ImageModelCapabilities $model
+    if ($capabilities.known -and -not $capabilities.supports_complexity) {
+        throw (New-HttpException 400 "当前模型不支持复杂度设置，请选择 GPT Image 2.6 Flare/Sunburst，或清空复杂度。")
     }
 }
 
@@ -1042,8 +1111,8 @@ function Apply-RequestCompatibility($apiPayload, [string]$mode = "") {
     $effectiveMode = ([string]$mode).Trim().ToLowerInvariant()
     if ([string]::IsNullOrWhiteSpace($effectiveMode)) { $effectiveMode = $RequestMode }
     if ($effectiveMode -eq "basic") {
-        foreach ($name in @("quality", "background", "output_format", "output_compression")) {
-            $apiPayload.Remove($name)
+        foreach ($name in @("quality", "complexity", "background", "output_format", "output_compression")) {
+            [void]$apiPayload.Remove($name)
         }
     }
 }
@@ -1653,54 +1722,61 @@ function New-MockResult($uiPayload, [string]$endpoint, $apiPayload, [datetime]$s
             images = @()
         }
     }
-    $count = 1
-    if ($endpoint -eq "/v1/images/generations") {
-        $count = [int](Get-Prop $apiPayload "n" 1)
-    }
-    if ($count -lt 1) { $count = 1 }
-    if ($count -gt 10) { $count = 10 }
+    $count = [int](Get-Prop $apiPayload "n" 1)
+    $count = [Math]::Max(1, [Math]::Min(10, $count))
+    Add-Type -AssemblyName System.Drawing
 
     $images = New-Object System.Collections.ArrayList
-    $prompt = [string](Get-Prop $apiPayload "prompt" "Mock image")
+    $prompt = [string](Get-Prop $apiPayload "prompt" "演示图片")
     $size = [string](Get-Prop $apiPayload "size" "1024x1024")
+    $width = 1024
+    $height = 1024
+    if ($size -match '^(\d{2,4})x(\d{2,4})$') {
+        $candidateWidth = [int]$Matches[1]
+        $candidateHeight = [int]$Matches[2]
+        if ($candidateWidth -gt 0 -and $candidateHeight -gt 0 -and [Math]::Max($candidateWidth, $candidateHeight) -le 3840 -and ([long]$candidateWidth * $candidateHeight) -le 8294400) {
+            $width = $candidateWidth
+            $height = $candidateHeight
+        }
+    }
     for ($index = 1; $index -le $count; $index++) {
-        $safePrompt = HtmlAttr $prompt
-        $svg = @"
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <defs>
-    <radialGradient id="glow" cx="30%" cy="20%" r="80%">
-      <stop offset="0%" stop-color="#f7f7f7"/>
-      <stop offset="42%" stop-color="#565656"/>
-      <stop offset="100%" stop-color="#020617"/>
-    </radialGradient>
-    <linearGradient id="card" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.32"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.06"/>
-    </linearGradient>
-  </defs>
-  <rect width="1024" height="1024" fill="url(#glow)"/>
-  <circle cx="790" cy="190" r="230" fill="#cfcfcf" opacity="0.18"/>
-  <circle cx="180" cy="820" r="260" fill="#2a2a2a" opacity="0.32"/>
-  <rect x="96" y="130" width="832" height="764" rx="58" fill="url(#card)" stroke="#ffffff" stroke-opacity="0.35"/>
-  <text x="128" y="230" fill="#fff7ed" font-family="Georgia, serif" font-size="58" font-weight="700">Mock Image $index</text>
-  <text x="128" y="300" fill="#fde68a" font-family="Segoe UI, sans-serif" font-size="28">No API credits used · $size</text>
-  <foreignObject x="128" y="365" width="768" height="330">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="font: 34px/1.35 'Segoe UI', sans-serif; color:#fff; word-wrap:break-word;">$safePrompt</div>
-  </foreignObject>
-  <text x="128" y="820" fill="#dbeafe" font-family="Consolas, monospace" font-size="22">IMAGE_WEBUI_MOCK=1</text>
-</svg>
-"@
-        $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($svg))
+        $bitmap = $graphics = $titleFont = $bodyFont = $metaFont = $textBrush = $mutedBrush = $stream = $null
+        try {
+            $bitmap = [Drawing.Bitmap]::new($width, $height)
+            $graphics = [Drawing.Graphics]::FromImage($bitmap)
+            $graphics.Clear([Drawing.Color]::White)
+            $graphics.TextRenderingHint = [Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+            $unit = [single]([Math]::Min($width, $height) / 1024.0)
+            $margin = [single](64 * $unit)
+            $titleFont = [Drawing.Font]::new("Microsoft YaHei", [single](48 * $unit), [Drawing.FontStyle]::Bold, [Drawing.GraphicsUnit]::Pixel)
+            $bodyFont = [Drawing.Font]::new("Microsoft YaHei", [single](30 * $unit), [Drawing.FontStyle]::Regular, [Drawing.GraphicsUnit]::Pixel)
+            $metaFont = [Drawing.Font]::new("Microsoft YaHei", [single](22 * $unit), [Drawing.FontStyle]::Regular, [Drawing.GraphicsUnit]::Pixel)
+            $textBrush = [Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(28, 28, 28))
+            $mutedBrush = [Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(100, 100, 100))
+            $graphics.DrawString("演示图片 $index", $titleFont, $textBrush, $margin, $margin)
+            $graphics.DrawString("本次未调用模型，不消耗额度", $metaFont, $mutedBrush, $margin, [single](142 * $unit))
+            $promptRect = [Drawing.RectangleF]::new($margin, [single](238 * $unit), [single]($width - 2 * $margin), [single]($height - 400 * $unit))
+            $graphics.DrawString($prompt, $bodyFont, $textBrush, $promptRect)
+            $graphics.DrawString("ImageBot  |  ${width} x ${height}", $metaFont, $mutedBrush, $margin, [single]($height - 100 * $unit))
+            $stream = [IO.MemoryStream]::new()
+            $bitmap.Save($stream, [Drawing.Imaging.ImageFormat]::Png)
+            $bytes = $stream.ToArray()
+            $b64 = [Convert]::ToBase64String($bytes)
+        } finally {
+            foreach ($resource in @($stream, $textBrush, $mutedBrush, $titleFont, $bodyFont, $metaFont, $graphics, $bitmap)) {
+                if ($null -ne $resource) { $resource.Dispose() }
+            }
+        }
         $saved = $null
-        try { $saved = Save-ImageFromBase64 $b64 "image/svg+xml" "mock" $index } catch {}
+        try { $saved = Save-ImageFromBase64 $b64 "image/png" "mock" $index } catch {}
         [void]$images.Add([ordered]@{
-            src = "data:image/svg+xml;base64,$b64"
-            filename = $(if ($null -ne $saved) { $saved.filename } else { "mock-$index.svg" })
-            mime_type = "image/svg+xml"
+            src = "data:image/png;base64,$b64"
+            filename = $(if ($null -ne $saved) { $saved.filename } else { "mock-$index.png" })
+            mime_type = "image/png"
             is_data_url = $true
             saved = ($null -ne $saved)
             local_url = $(if ($null -ne $saved) { $saved.local_url } else { "" })
-            bytes = $(if ($null -ne $saved) { $saved.bytes } else { 0 })
+            bytes = $bytes.Length
         })
     }
 
@@ -1940,13 +2016,15 @@ function Handle-ApiGenerate($payload) {
     if ([string]::IsNullOrWhiteSpace($model)) { $model = $DefaultModel }
     Assert-ImageSize $model ([string](Get-Prop $payload "size" ""))
     Assert-ImageQuality $model ([string](Get-Prop $payload "quality" ""))
+    Assert-ImageComplexity $model ([string](Get-Prop $payload "complexity" ""))
 
     $pairs = @{
         model = $model
         prompt = $prompt
         size = (Get-Prop $payload "size" $null)
         n = (Get-RequestInt $payload "n" 1 1 10 "N")
-        quality = (Get-Prop $payload "quality" $null)
+        quality = ([string](Get-Prop $payload "quality" "")).Trim().ToLowerInvariant()
+        complexity = ([string](Get-Prop $payload "complexity" "")).Trim().ToLowerInvariant()
         background = (Get-Prop $payload "background" $null)
         output_format = (Get-Prop $payload "output_format" $null)
         output_compression = $(if (-not [string]::IsNullOrWhiteSpace([string](Get-Prop $payload "output_compression" ""))) { Get-RequestInt $payload "output_compression" 100 0 100 "Output Compression" } else { $null })
@@ -1963,6 +2041,7 @@ function Handle-ApiEdit($payload) {
     if ([string]::IsNullOrWhiteSpace($model)) { $model = $DefaultModel }
     Assert-ImageSize $model ([string](Get-Prop $payload "size" ""))
     Assert-ImageQuality $model ([string](Get-Prop $payload "quality" ""))
+    Assert-ImageComplexity $model ([string](Get-Prop $payload "complexity" ""))
 
     $inputImages = New-Object System.Collections.ArrayList
     $imagesValue = Get-Prop $payload "images" $null
@@ -1997,7 +2076,8 @@ function Handle-ApiEdit($payload) {
         images = @($apiImages)
         size = (Get-Prop $payload "size" $null)
         n = $(if (-not [string]::IsNullOrWhiteSpace([string](Get-Prop $payload "n" ""))) { Get-RequestInt $payload "n" 1 1 10 "N" } else { $null })
-        quality = (Get-Prop $payload "quality" $null)
+        quality = ([string](Get-Prop $payload "quality" "")).Trim().ToLowerInvariant()
+        complexity = ([string](Get-Prop $payload "complexity" "")).Trim().ToLowerInvariant()
         background = (Get-Prop $payload "background" $null)
         output_format = (Get-Prop $payload "output_format" $null)
         output_compression = $(if (-not [string]::IsNullOrWhiteSpace([string](Get-Prop $payload "output_compression" ""))) { Get-RequestInt $payload "output_compression" 100 0 100 "Output Compression" } else { $null })
@@ -2065,7 +2145,7 @@ function Handle-ApiTest($payload) {
 $BaseUrlRaw = ConfigValue "OPENAI_BASE_URL" "https://www.chichiapi.cn/"
 $BaseUrl = Normalize-BaseUrl $BaseUrlRaw
 $ApiKey = ConfigValue "OPENAI_API_KEY" ""
-$DefaultModel = ConfigValue "OPENAI_IMAGE_MODEL" "gpt-image-2.5-flare"
+$DefaultModel = ConfigValue "OPENAI_IMAGE_MODEL" "gpt-image-2.6-flare"
 $RequestMode = (ConfigValue "IMAGEBOT_REQUEST_MODE" "auto").Trim().ToLowerInvariant()
 if ($RequestMode -notin @("auto", "basic", "full")) { $RequestMode = "auto" }
 $HostName = ConfigValue "IMAGE_WEBUI_HOST" "127.0.0.1"
@@ -2094,93 +2174,14 @@ $IndexHtmlTemplate = @'
 <!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ImageBot</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageBot - 文件不完整</title>
 <style>
-:root{--bg:#0b0b0c;--surface:#111113;--surface2:#18181b;--surface3:#202024;--text:#f4f4f5;--muted:#a1a1aa;--soft:#71717a;--line:#27272a;--field:#151518;--white:#fff;--black:#050505;--bad:#d4d4d8;--ok:#fafafa;--shadow:0 24px 70px rgba(0,0,0,.42);--font:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei",Arial,sans-serif;--mono:"Cascadia Code",Consolas,monospace}*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);overflow:hidden}button,input,textarea,select{font:inherit}.app{height:100vh;display:grid;grid-template-columns:300px minmax(0,1fr);background:radial-gradient(circle at 50% -10%,rgba(255,255,255,.08),transparent 34rem),var(--bg)}.sidebar{border-right:1px solid var(--line);background:#09090a;display:grid;grid-template-rows:auto auto 1fr auto;min-width:0}.brand{height:64px;display:flex;align-items:center;gap:11px;padding:0 16px}.logo{width:32px;height:32px;border-radius:10px;background:#f4f4f5;color:#050505;display:grid;place-items:center;font-weight:1000}.brand strong{display:block;font-size:15px}.brand span{display:block;color:var(--soft);font-size:12px;margin-top:2px}.new-chat{margin:8px 12px 12px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:13px;padding:12px;font-weight:900;cursor:pointer;text-align:left}.history-pane{overflow:auto;padding:0 8px 10px}.history-title{color:var(--soft);font-size:12px;font-weight:900;padding:10px 8px}.history-item{border:0;background:transparent;color:var(--muted);width:100%;text-align:left;border-radius:12px;padding:10px 9px;display:grid;grid-template-columns:42px minmax(0,1fr);gap:9px;cursor:pointer}.history-item:hover{background:var(--surface)}.thumbs{display:grid;grid-template-columns:repeat(2,19px);grid-auto-rows:19px;gap:3px}.thumbs img,.thumb-empty{width:19px;height:19px;border-radius:5px;object-fit:cover;background:var(--surface2);border:1px solid var(--line)}.history-copy{min-width:0}.history-copy strong{display:block;color:#e4e4e7;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.history-copy small{display:block;color:var(--soft);font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.side-foot{padding:12px;border-top:1px solid var(--line);display:grid;gap:8px}.status-chip{display:flex;align-items:center;gap:8px;color:var(--muted);font:12px/1.4 var(--mono);border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:9px;min-width:0}.dot{width:8px;height:8px;border-radius:99px;background:var(--ok);box-shadow:0 0 14px rgba(255,255,255,.28);flex:0 0 auto}.dot.bad{background:#71717a}.main{height:100vh;display:grid;grid-template-rows:64px minmax(0,1fr) auto;background:linear-gradient(180deg,#0e0e10,#0b0b0c)}.topbar{height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 22px}.model-pill{display:flex;align-items:center;gap:10px;color:#e4e4e7;font-weight:900}.model-pill span{color:var(--soft);font:12px var(--mono)}.top-actions{display:flex;gap:8px}.icon-btn,.btn{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:12px;padding:10px 12px;font-weight:900;cursor:pointer}.icon-btn:hover,.btn:hover{background:var(--surface2)}.btn.primary{background:#f4f4f5;color:#09090b;border-color:#f4f4f5}.workspace{overflow:auto}.conversation{width:min(900px,calc(100% - 36px));margin:0 auto;padding:34px 0 170px}.hero{min-height:calc(100vh - 300px);display:grid;place-items:center;text-align:center}.hero-inner{max-width:720px}.hero h1{font-size:42px;letter-spacing:-.04em;margin:0 0 10px}.hero p{color:var(--muted);font-size:16px;margin:0 auto 24px;line-height:1.7}.quick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.quick{border:1px solid var(--line);background:rgba(255,255,255,.035);border-radius:16px;padding:14px;text-align:left;color:#e4e4e7;cursor:pointer}.quick:hover{background:var(--surface)}.quick b{display:block;margin-bottom:5px}.quick span{color:var(--soft);font-size:12px;line-height:1.5}.messages{display:grid;gap:24px}.message{display:grid;grid-template-columns:36px minmax(0,1fr);gap:13px}.avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--surface2);border:1px solid var(--line);font-weight:1000;color:#f4f4f5}.message.user .avatar{background:#f4f4f5;color:#050505}.bubble{padding-top:6px;color:#e7e7ea;line-height:1.72;white-space:pre-wrap}.message.user .bubble{color:#fff}.meta{color:var(--soft);font:12px var(--mono);margin-top:6px}.image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:14px}.image-card{border:1px solid var(--line);background:var(--surface);border-radius:18px;overflow:hidden}.image-card img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;background:#050505}.image-actions{display:flex;gap:8px;padding:10px}.image-actions button,.image-actions a{flex:1;border:1px solid var(--line);background:var(--surface2);color:#f4f4f5;text-decoration:none;text-align:center;border-radius:11px;padding:9px;font-weight:900;font-size:12px;cursor:pointer}.composer-wrap{position:fixed;left:300px;right:0;bottom:0;background:linear-gradient(180deg,rgba(11,11,12,0),rgba(11,11,12,.92) 22%,#0b0b0c 100%);padding:32px 18px 18px}.composer{width:min(900px,calc(100vw - 336px));margin:0 auto;border:1px solid var(--line);background:#131316;border-radius:24px;box-shadow:var(--shadow);padding:10px}.file-strip{display:flex;gap:8px;flex-wrap:wrap;padding:0 4px 8px}.file-pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface2);border-radius:999px;padding:6px 9px;color:#d4d4d8;font-size:12px}.file-pill button{border:0;background:transparent;color:#a1a1aa;cursor:pointer;font-weight:1000}.input-line{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:end}.upload{width:42px;height:42px;border:1px solid var(--line);background:var(--surface2);color:#f4f4f5;border-radius:14px;cursor:pointer;font-size:22px}.prompt{min-height:44px;max-height:170px;resize:none;border:0;background:transparent;color:var(--text);outline:none;padding:10px 6px;line-height:1.55}.send{height:42px;min-width:76px;border:0;border-radius:14px;background:#f4f4f5;color:#050505;font-weight:1000;cursor:pointer}.send:disabled,.upload:disabled{opacity:.5;cursor:wait}.composer-meta{display:flex;justify-content:space-between;gap:10px;color:var(--soft);font-size:12px;padding:8px 5px 0}.preset-row{display:flex;gap:8px;flex-wrap:wrap}.preset{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:6px 9px;font-size:12px;font-weight:900;cursor:pointer}.preset.active{background:#f4f4f5;color:#050505;border-color:#f4f4f5}.progress{height:4px;border-radius:99px;background:var(--surface3);overflow:hidden;margin:8px 5px 0}.progress span{display:block;width:0;height:100%;background:#f4f4f5;transition:.25s}.toast{position:fixed;right:20px;bottom:142px;max-width:520px;border:1px solid var(--line);background:#18181b;color:#e4e4e7;border-radius:16px;padding:12px 14px;font:13px/1.55 var(--mono);box-shadow:var(--shadow);white-space:pre-wrap}.hidden{display:none!important}.drawer{position:fixed;top:0;right:0;width:min(460px,100vw);height:100vh;background:#0f0f11;border-left:1px solid var(--line);box-shadow:-20px 0 70px rgba(0,0,0,.45);transform:translateX(105%);transition:.22s ease;z-index:20;display:grid;grid-template-rows:64px minmax(0,1fr)}.drawer.open{transform:translateX(0)}.drawer-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:0 16px}.drawer-body{overflow:auto;padding:16px;display:grid;gap:13px}.field{display:grid;gap:7px}.field span{color:#d4d4d8;font-size:13px;font-weight:900}input,select{width:100%;border:1px solid var(--line);background:var(--field);color:var(--text);border-radius:13px;padding:11px;outline:none}.admin-grid{display:grid;gap:10px}.admin-actions{display:flex;flex-wrap:wrap;gap:8px}.diagnostics{display:grid;gap:9px}.diag-card{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:10px}.diag-card b{display:block;font-size:12px;margin-bottom:4px}.diag-card span{display:block;color:var(--muted);font:12px/1.45 var(--mono);word-break:break-all}.raw{border-top:1px solid var(--line);padding-top:12px}.raw summary{cursor:pointer;color:#d4d4d8;font-weight:900}.raw pre{overflow:auto;max-height:260px;background:#050505;color:#e4e4e7;padding:12px;border-radius:12px;border:1px solid var(--line);font-size:12px}.mobile-menu{display:none}@media(max-width:860px){.app{grid-template-columns:1fr}.sidebar{position:fixed;inset:0 auto 0 0;width:300px;z-index:30;transform:translateX(-105%);transition:.2s}.sidebar.open{transform:translateX(0)}.mobile-menu{display:block}.composer-wrap{left:0}.composer{width:min(900px,calc(100vw - 24px))}.hero h1{font-size:32px}.quick-grid{grid-template-columns:1fr}.conversation{width:min(900px,calc(100% - 24px));padding-bottom:190px}.topbar{padding:0 12px}.composer-meta{display:grid}.model-pill span{display:none}}
+:root{color-scheme:light dark}*{box-sizing:border-box}body{margin:0;font:17px/1.8 system-ui,"Microsoft YaHei",sans-serif;background:light-dark(#fafafa,#171717);color:light-dark(#222,#eee)}main{max-width:640px;margin:12vh auto;padding:24px}h1{font-size:24px;margin:0 0 16px}p{margin:12px 0}
 </style>
 </head>
-<body>
-<div class="app">
-  <aside class="sidebar" id="sidebar">
-    <div class="brand"><div class="logo">AI</div><div><strong>ImageBot</strong><span>图片生成助手</span></div></div>
-    <button class="new-chat" id="newChatBtn">+ 新对话</button>
-    <div class="history-pane"><div class="history-title">最近生成</div><div id="historyList"></div></div>
-    <div class="side-foot"><div class="status-chip" id="keyStatus"><span class="dot bad"></span><span>配置读取中</span></div><div class="status-chip" id="baseStatus"><span class="dot"></span><span>%%BASE_URL%%</span></div></div>
-  </aside>
-
-  <main class="main">
-    <header class="topbar">
-      <button class="icon-btn mobile-menu" id="menuBtn">☰</button>
-      <div class="model-pill">ImageBot <span id="modelLabel">%%MODEL%%</span></div>
-      <div class="top-actions"><button class="icon-btn" id="adminBtn">设置</button></div>
-    </header>
-    <section class="workspace" id="workspace">
-      <div class="conversation">
-        <section class="hero" id="hero">
-          <div class="hero-inner"><h1>想生成什么图片？</h1><p>输入一句话即可生成图片；如果要参考某张图，先上传图片再说想怎么改。</p><div class="quick-grid">
-            <button class="quick" data-prompt="生成一张高级黑白风格的电商产品海报，干净背景，真实摄影质感"><b>电商产品海报</b><span>适合商品主图、详情页视觉</span></button>
-            <button class="quick" data-prompt="生成一张专业头像写真，干净背景，真实摄影，柔和光线"><b>头像写真</b><span>适合个人形象照、社交头像</span></button>
-            <button class="quick" data-prompt="生成一张电影感海报，强构图，高级黑白色调，视觉冲击力强"><b>电影感海报</b><span>适合活动、宣传和封面</span></button>
-            <button class="quick" data-prompt="把参考图改成高级商业摄影风格，保持主体，背景更干净"><b>上传图片后改图</b><span>先上传参考图，再点击这个模板</span></button>
-          </div></div>
-        </section>
-        <section class="messages" id="messages"></section>
-      </div>
-    </section>
-  </main>
-</div>
-
-<div class="composer-wrap">
-  <div class="composer">
-    <div class="file-strip" id="fileStrip"></div>
-    <div class="input-line"><button class="upload" id="uploadBtn" title="上传图片">+</button><textarea class="prompt" id="promptInput" placeholder="发消息给 ImageBot，描述你想生成的图片"></textarea><button class="send" id="sendBtn">生成</button></div>
-    <input id="imageInput" class="hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple />
-    <div class="composer-meta"><div class="preset-row"><button class="preset active" data-size="1024x1024" data-quality="high" data-bg="" data-format="">通用高清</button><button class="preset" data-size="1536x1024" data-quality="high" data-bg="opaque" data-format="png">电商白底</button><button class="preset" data-size="1024x1024" data-quality="high" data-bg="transparent" data-format="png">透明背景</button><button class="preset" data-size="1536x1024" data-quality="high" data-bg="" data-format="png">海报图</button></div><span>Enter 换行，Ctrl+Enter 生成</span></div>
-    <div class="progress"><span id="progressBar"></span></div>
-  </div>
-</div>
-
-<div class="toast hidden" id="toast"></div>
-
-<aside class="drawer" id="drawer">
-  <div class="drawer-head"><strong>管理员设置</strong><button class="icon-btn" id="closeDrawerBtn">关闭</button></div>
-  <div class="drawer-body">
-    <div class="admin-grid">
-      <label class="field"><span>Base URL</span><input id="baseUrl" value="%%BASE_URL%%" autocomplete="off" /></label>
-      <label class="field"><span>API Key</span><input id="apiKey" type="password" placeholder="留空使用 config.ini" autocomplete="off" /></label>
-      <label class="field"><span>模型</span><input id="model" value="%%MODEL%%" autocomplete="off" /></label>
-      <label class="field"><span>服务端超时（秒）</span><input id="timeoutSecInput" type="number" min="10" max="1800" value="240" /></label>
-      <label class="field"><span>Mock 测试</span><select id="mockMode"><option value="0">关闭</option><option value="1">开启</option></select></label>
-      <label class="field"><span>尺寸</span><select id="sizeInput"><option>1024x1024</option><option>1536x1024</option><option>1024x1536</option><option>2048x2048</option><option>2048x1152</option><option>auto</option></select></label>
-      <label class="field"><span>清晰度</span><select id="qualityInput"><option value="high">高</option><option value="medium">中</option><option value="low">低</option><option value="auto">自动</option><option value="">默认</option></select></label>
-      <label class="field"><span>背景</span><select id="backgroundInput"><option value="">默认</option><option value="auto">自动</option><option value="opaque">不透明</option><option value="transparent">透明</option></select></label>
-      <label class="field"><span>输出格式</span><select id="outputFormatInput"><option value="">默认</option><option>png</option><option>jpeg</option><option>webp</option></select></label>
-      <label class="field"><span>生成数量</span><select id="countInput"><option value="1">1张</option><option value="2">2张</option><option value="4">4张</option></select></label>
-    </div>
-    <div class="admin-actions"><button class="btn" id="saveConfigBtn">保存配置</button><button class="btn" id="testBtn">测试连接</button><button class="btn" id="diagnoseBtn">诊断</button><button class="btn" id="copyDiagBtn">复制诊断</button><button class="btn" id="copyErrorBtn">复制错误</button><button class="btn" id="clearHistoryBtn">清空历史</button></div>
-    <div class="status-chip" id="configText"><span class="dot"></span><span>加载中...</span></div>
-    <div class="diagnostics hidden" id="diagnosticsPanel"></div>
-    <details class="raw"><summary>原始响应</summary><pre id="raw">{}</pre></details>
-  </div>
-</aside>
-<script>
-const qs=id=>document.getElementById(id);
-const state={config:null,files:[],currentImages:[],historyItems:[],lastError:"",lastDiagnostics:null,maxUploadMb:50,timeoutSec:240,busy:false};
-const messages=qs("messages"),hero=qs("hero"),toast=qs("toast"),rawEl=qs("raw"),progressBar=qs("progressBar"),workspace=qs("workspace");
-function esc(v){return String(v).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));}function attr(v){return esc(v).replace(/`/g,"&#96;");}function arr(v){if(Array.isArray(v))return v;if(!v)return[];if(typeof v==="object"){if(Array.isArray(v.items))return v.items;if(Array.isArray(v.value))return v.value;return Object.values(v).filter(x=>x&&typeof x==="object");}return[];}function compact(o){for(const k of Object.keys(o)){if(o[k]===""||o[k]===null||o[k]===undefined)delete o[k];}return o;}function showToast(t){toast.textContent=t;toast.classList.remove("hidden");clearTimeout(showToast.t);showToast.t=setTimeout(()=>toast.classList.add("hidden"),5200);}function setProgress(v){progressBar.style.width=`${Math.max(0,Math.min(100,v))}%`;}function setBusy(v){state.busy=v;for(const el of document.querySelectorAll("button,textarea,input,select")){if(["adminBtn","closeDrawerBtn","copyErrorBtn","copyDiagBtn"].includes(el.id))continue;el.disabled=v;}}function humanError(m){const t=String(m||"");if(/504|Gateway Timeout/i.test(t))return t+"\n处理建议：网关或 CDN 等待时间不够，联系管理员检查回源超时。";if(/401|403|key|API Key/i.test(t))return t+"\n处理建议：检查 API Key 是否填写或有效。";if(/model|模型/i.test(t))return t+"\n处理建议：确认模型名称是否被中转支持。";return t;}function commonPayload(){const p={base_url:qs("baseUrl").value.trim(),api_key:qs("apiKey").value.trim(),model:qs("model").value.trim()};if(!p.model)p.model="%%MODEL%%";return p;}function configPayload(){return {...commonPayload(),timeout_sec:Number(qs("timeoutSecInput").value||state.timeoutSec||240),mock:qs("mockMode").value==="1"};}
-function addMessage(role,html){hero.classList.add("hidden");const el=document.createElement("article");el.className=`message ${role}`;el.innerHTML=`<div class="avatar">${role==="user"?"你":"AI"}</div><div class="bubble">${html}</div>`;messages.appendChild(el);workspace.scrollTo({top:workspace.scrollHeight,behavior:"smooth"});return el;}function renderFiles(){qs("fileStrip").innerHTML=state.files.map((f,i)=>`<span class="file-pill">${esc(f.name)} <button type="button" onclick="removeFile(${i})">x</button></span>`).join("");}function validateFiles(files){const list=Array.from(files||[]);if(list.length>16)throw new Error("参考图最多 16 张。");for(const f of list){if(!/^image\/(png|jpeg|webp)$/.test(f.type))throw new Error(`${f.name} 不是支持的图片。`);if(f.size>state.maxUploadMb*1024*1024)throw new Error(`${f.name} 超过 ${state.maxUploadMb} MB。`);}return list;}function fileToDataURL(f){return new Promise((ok,fail)=>{const r=new FileReader();r.onload=()=>ok(String(r.result||""));r.onerror=()=>fail(r.error||new Error("读取图片失败"));r.readAsDataURL(f);});}async function filesToDataURLs(files){const out=[];for(const f of files)out.push(await fileToDataURL(f));return out;}
-async function requestJSON(path,payload){rawEl.textContent="{}";setBusy(true);setProgress(12);const started=Date.now();const timer=setInterval(()=>{const s=Math.floor((Date.now()-started)/1000);if(s>8)showToast(`正在生成，已等待 ${s} 秒`);setProgress(Math.min(88,12+s/state.timeoutSec*70));},1000);const controller=new AbortController();const abortTimer=setTimeout(()=>controller.abort(),(state.timeoutSec+20)*1000);try{const res=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),signal:controller.signal});let body;try{body=await res.json();}catch{throw new Error(`服务端返回非 JSON：HTTP ${res.status}`);}rawEl.textContent=JSON.stringify(body,null,2);if(!res.ok||body.error)throw new Error((body.error&&body.error.message)||body.message||`HTTP ${res.status}`);setProgress(100);return body;}catch(e){const msg=humanError(e.name==="AbortError"?"浏览器等待超时，已断开。":(e.message||String(e)));state.lastError=msg+"\n\n"+rawEl.textContent;showToast(msg);throw e;}finally{clearInterval(timer);clearTimeout(abortTimer);setBusy(false);setTimeout(()=>setProgress(0),900);}}
-function imageResult(images){images=arr(images);state.currentImages=images;if(!images.length)return"请求完成，但没有可显示图片。";return`生成完成，共 ${images.length} 张。<div class="image-grid">${images.map((it,i)=>{const src=it.local_url||it.src||"";return`<div class="image-card"><img src="${attr(src)}" alt="生成结果 ${i+1}"><div class="image-actions"><button onclick="downloadImage(${i})">下载</button><a href="${attr(src)}" target="_blank" rel="noreferrer">打开</a></div></div>`}).join("")}</div>`;}async function send(){const prompt=qs("promptInput").value.trim();if(!prompt){showToast("请先输入想生成什么图片。");return;}try{const hasFiles=state.files.length>0;addMessage("user",`${esc(prompt)}${hasFiles?`<div class="meta">已上传 ${state.files.length} 张参考图</div>`:""}`);const payload=compact({...commonPayload(),prompt,size:qs("sizeInput").value,n:Number(qs("countInput").value||1),quality:qs("qualityInput").value,background:qs("backgroundInput").value,output_format:qs("outputFormatInput").value});let path="/api/generate";if(hasFiles){path="/api/edit";payload.images=await filesToDataURLs(state.files);}const body=await requestJSON(path,payload);addMessage("assistant",imageResult(body.images));qs("promptInput").value="";state.files=[];renderFiles();await loadHistory();}catch(e){addMessage("assistant",`生成失败：${esc(humanError(e.message||String(e)))}`);}}
-function renderConfig(){const cfg=state.config;if(!cfg)return;const tempKey=qs("apiKey").value.trim();const mock=qs("mockMode").value==="1"||cfg.mock;const hasKey=cfg.has_api_key||tempKey||mock;qs("keyStatus").innerHTML=`<span class="dot ${hasKey?"":"bad"}"></span><span>${mock?"Mock 模式":hasKey?"Key 已配置":"Key 缺失"}</span>`;qs("baseStatus").innerHTML=`<span class="dot"></span><span>${esc(qs("baseUrl").value||cfg.base_url||"")}</span>`;qs("modelLabel").textContent=qs("model").value||cfg.model||"";qs("configText").innerHTML=`<span class="dot ${hasKey?"":"bad"}"></span><span>${mock?"模拟模式":"真实请求"} · 超时 ${state.timeoutSec}s · ${hasKey?"Key 可用":"Key 缺失"}</span>`;}async function loadConfig(){try{const r=await fetch("/api/config");const cfg=await r.json();state.config=cfg;state.maxUploadMb=cfg.max_upload_mb||50;state.timeoutSec=cfg.timeout_sec||240;qs("baseUrl").value=cfg.base_url||qs("baseUrl").value;qs("model").value=cfg.model||qs("model").value;qs("timeoutSecInput").value=state.timeoutSec;qs("mockMode").value=cfg.mock?"1":"0";renderConfig();}catch{showToast("配置读取失败");}}
-async function loadHistory(){try{const r=await fetch("/api/history?limit=50");const body=await r.json();const items=arr(body.items);state.historyItems=items;qs("historyList").innerHTML=items.length?items.map((item,i)=>{const imgs=arr(item.images).filter(x=>x&&(x.src||x.local_url)).slice(0,4);const thumbs=imgs.length?imgs.map(img=>`<img src="${attr(img.local_url||img.src)}" alt="">`).join(""):`<div class="thumb-empty"></div>`;return`<button class="history-item" onclick="reuseHistory(${i})"><div class="thumbs">${thumbs}</div><div class="history-copy"><strong>${esc(item.prompt||"无提示词")}</strong><small>${esc(item.time||"")} · ${item.status==="success"?"成功":"失败"}</small></div></button>`}).join(""):`<div class="history-copy" style="padding:10px;color:var(--soft)">暂无历史</div>`;}catch{}}
-async function saveConfig(){try{const body=await requestJSON("/api/config/save",configPayload());state.config=body.config;state.timeoutSec=body.config.timeout_sec||state.timeoutSec;qs("apiKey").value="";renderConfig();showToast("配置已保存");}catch{}}async function diagnose(){try{const body=await requestJSON("/api/diagnostics",configPayload());state.lastDiagnostics=body;const checks=arr(body.checks);qs("diagnosticsPanel").classList.remove("hidden");qs("diagnosticsPanel").innerHTML=checks.map(c=>`<div class="diag-card"><b>${c.ok?"正常":"需处理"} · ${esc(c.name||"")}</b><span>${esc(c.value||"")}</span></div>`).join("");showToast("诊断完成");}catch{}}async function postSimple(path,payload={}){const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const b=await r.json();if(!r.ok||b.error)throw new Error((b.error&&b.error.message)||b.message||`HTTP ${r.status}`);return b;}function reuseHistory(i){const item=state.historyItems[i];if(!item)return;qs("promptInput").value=item.prompt||"";qs("sidebar").classList.remove("open");qs("promptInput").focus();}async function clearHistory(){if(!confirm("确认清空历史记录？不会删除图片文件。"))return;await postSimple("/api/history/clear",{});await loadHistory();}
-async function downloadImage(i){const it=state.currentImages[i];if(!it)return;const src=it.local_url||it.src;if(!src)return;const a=document.createElement("a");a.href=src;a.download=it.filename||`image-${i+1}.png`;document.body.appendChild(a);a.click();a.remove();}async function copyText(t){try{await navigator.clipboard.writeText(t);}catch{const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}}
-for(const q of document.querySelectorAll(".quick")){q.addEventListener("click",()=>{qs("promptInput").value=q.dataset.prompt||"";qs("promptInput").focus();});}for(const p of document.querySelectorAll(".preset")){p.addEventListener("click",()=>{document.querySelectorAll(".preset").forEach(x=>x.classList.remove("active"));p.classList.add("active");qs("sizeInput").value=p.dataset.size||"1024x1024";qs("qualityInput").value=p.dataset.quality||"high";qs("backgroundInput").value=p.dataset.bg||"";qs("outputFormatInput").value=p.dataset.format||"";});}qs("sendBtn").addEventListener("click",send);qs("promptInput").addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))send();});qs("uploadBtn").addEventListener("click",()=>qs("imageInput").click());qs("imageInput").addEventListener("change",e=>{state.files=validateFiles(e.target.files);renderFiles();});window.removeFile=i=>{state.files.splice(i,1);renderFiles();};qs("newChatBtn").addEventListener("click",()=>{messages.innerHTML="";hero.classList.remove("hidden");state.currentImages=[];qs("promptInput").value="";state.files=[];renderFiles();});qs("adminBtn").addEventListener("click",()=>qs("drawer").classList.add("open"));qs("closeDrawerBtn").addEventListener("click",()=>qs("drawer").classList.remove("open"));qs("menuBtn").addEventListener("click",()=>qs("sidebar").classList.toggle("open"));qs("saveConfigBtn").addEventListener("click",saveConfig);qs("diagnoseBtn").addEventListener("click",diagnose);qs("testBtn").addEventListener("click",async()=>{try{const b=await requestJSON("/api/test",commonPayload());showToast(b.message||"连接测试完成");}catch{}});qs("copyDiagBtn").addEventListener("click",async()=>{if(!state.lastDiagnostics){showToast("没有诊断信息");return;}await copyText(JSON.stringify(state.lastDiagnostics,null,2));showToast("诊断已复制");});qs("copyErrorBtn").addEventListener("click",async()=>{if(!state.lastError){showToast("没有错误信息");return;}await copyText(state.lastError);showToast("错误已复制");});qs("clearHistoryBtn").addEventListener("click",clearHistory);for(const id of ["baseUrl","apiKey","model","timeoutSecInput","mockMode"]){qs(id).addEventListener("input",()=>{state.timeoutSec=Number(qs("timeoutSecInput").value||state.timeoutSec||240);renderConfig();});}
-window.downloadImage=downloadImage;window.reuseHistory=reuseHistory;loadConfig();loadHistory();
-</script>
-</body>
+<body><main><h1>ImageBot 的网页文件不完整</h1><p>请把完整安装包重新解压到同一个文件夹，再重新打开 ImageBot。</p><p>请保留原来的 config.ini、outputs 和 logs 文件夹，这样可以保留设置和图片。</p><p>当前版本：%%APP_VERSION%%</p></main></body>
 </html>
 '@
 
@@ -2367,7 +2368,7 @@ function Route-Request($client, $req) {
         return
     }
     if ($method -eq "GET" -and $path -eq "/api/history") {
-        Send-Json $client 200 ([ordered]@{ items = @(Get-HistoryRecords 50) })
+        Send-Json $client 200 (Get-HistoryPage ([string]$req.path))
         return
     }
     if ($method -eq "GET" -and $path -match '^/api/requests/([A-Za-z0-9._-]{8,100})$') {

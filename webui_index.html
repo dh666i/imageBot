@@ -6,1235 +6,568 @@
 <title>ImageBot</title>
 <style>
 :root {
-  --bg: #050505;
-  --panel: rgba(18, 18, 19, 0.82);
-  --panel-strong: #0d0d0e;
-  --card: rgba(255, 255, 255, 0.055);
-  --card-hover: rgba(255, 255, 255, 0.09);
-  --text: #f7f7f7;
-  --muted: #a3a3a3;
-  --soft: #6f6f73;
-  --line: rgba(255, 255, 255, 0.12);
-  --line-strong: rgba(255, 255, 255, 0.2);
-  --field: rgba(255, 255, 255, 0.06);
-  --white: #ffffff;
-  --black: #060606;
-  --ok: #f5f5f5;
-  --warn: #a3a3a3;
-  --bad: #5f5f63;
-  --shadow: 0 24px 90px rgba(0, 0, 0, 0.56);
-  --font: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  color-scheme: light;
+  --bg: #ffffff;
+  --sidebar: #f6f6f6;
+  --panel: #ffffff;
+  --panel-strong: #f3f3f3;
+  --card: #f5f5f5;
+  --card-hover: #ebebeb;
+  --text: #202020;
+  --muted: #606060;
+  --soft: #707070;
+  --line: #e5e5e5;
+  --line-strong: #c8c8c8;
+  --field: #ffffff;
+  --accent: #202020;
+  --on-accent: #ffffff;
+  --ok: #414141;
+  --warn: #777777;
+  --bad: #999999;
+  --shadow: 0 12px 48px #00000014;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
 }
-
-* { box-sizing: border-box; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #202020;
+  --sidebar: #171717;
+  --panel: #242424;
+  --panel-strong: #2c2c2c;
+  --card: #2b2b2b;
+  --card-hover: #353535;
+  --text: #eeeeee;
+  --muted: #b8b8b8;
+  --soft: #a2a2a2;
+  --line: #383838;
+  --line-strong: #555555;
+  --field: #292929;
+  --accent: #eeeeee;
+  --on-accent: #191919;
+  --ok: #d0d0d0;
+  --warn: #a0a0a0;
+  --bad: #777777;
+  --shadow: 0 12px 48px #00000040;
+}
+* { box-sizing: border-box; letter-spacing: 0; }
 html, body { height: 100%; }
-body {
-  margin: 0;
-  color: var(--text);
-  background:
-    radial-gradient(circle at 32% -12%, rgba(255, 255, 255, 0.18), transparent 26rem),
-    radial-gradient(circle at 112% 42%, rgba(255, 255, 255, 0.08), transparent 24rem),
-    linear-gradient(180deg, #0b0b0d 0%, #050505 58%, #010101 100%);
-  font-family: var(--font);
-  overflow: hidden;
-}
-
-button, input, textarea, select { font: inherit; }
-button { -webkit-tap-highlight-color: transparent; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 var(--font); overflow: hidden; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+button, a, summary, select { touch-action: manipulation; }
+button:disabled, input:disabled, select:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
+button, input, select { min-height: 44px; }
+button { font-weight: 500; }
+button:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button, a { transition: background .15s, border-color .15s; }
 .hidden { display: none !important; }
-
-.app {
-  height: 100vh;
-  display: grid;
-  grid-template-columns: 304px minmax(0, 1fr);
-}
-
-.sidebar {
-  min-width: 0;
-  display: grid;
-  grid-template-rows: auto auto 1fr auto;
-  border-right: 1px solid var(--line);
-  background: rgba(5, 5, 6, 0.84);
-  backdrop-filter: blur(28px) saturate(1.2);
-}
-
-.brand {
-  height: 70px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 16px;
-}
-
-.logo {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  color: var(--black);
-  background: linear-gradient(145deg, #ffffff, #bdbdbd);
-  border-radius: 13px;
-  font-weight: 1000;
-  letter-spacing: -0.06em;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 12px 28px rgba(0, 0, 0, 0.45);
-}
-
-.brand strong { display: block; font-size: 15px; letter-spacing: 0.01em; }
-.brand span { display: block; color: var(--soft); font-size: 12px; margin-top: 3px; }
-
-.new-chat {
-  margin: 8px 12px 12px;
-  border: 1px solid var(--line);
-  color: var(--text);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.045));
-  border-radius: 16px;
-  padding: 13px 14px;
-  text-align: left;
-  cursor: pointer;
-  font-weight: 900;
-}
-.new-chat:hover { border-color: var(--line-strong); background: var(--card-hover); }
-
-.history-pane { min-height: 0; overflow: auto; padding: 0 8px 12px; }
-.history-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--soft);
-  font-size: 12px;
-  font-weight: 900;
-  padding: 10px 8px;
-}
-
-.history-item {
-  position: relative;
-  display: grid;
-  grid-template-columns: 46px minmax(0, 1fr) auto;
-  gap: 9px;
-  align-items: center;
-  width: 100%;
-  border-radius: 15px;
-  padding: 9px;
-  color: var(--muted);
-  cursor: pointer;
-}
-.history-item:hover { background: var(--card); }
-.history-item:hover .history-delete { opacity: 1; }
-.history-item:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-
-.thumbs {
-  display: grid;
-  grid-template-columns: repeat(2, 21px);
-  grid-auto-rows: 21px;
-  gap: 3px;
-}
-.thumbs img, .thumb-empty {
-  width: 21px;
-  height: 21px;
-  border-radius: 7px;
-  object-fit: cover;
-  border: 1px solid var(--line);
-  background: #171719;
-}
-
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.icon { width: 20px; height: 20px; flex: 0 0 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
+.app { height: 100vh; height: 100dvh; display: grid; grid-template-columns: 264px minmax(0, 1fr); }
+.sidebar { min-height: 0; min-width: 0; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto; background: var(--sidebar); border-right: 1px solid var(--line); }
+.brand { height: 76px; display: flex; align-items: center; gap: 11px; padding: 0 22px; }
+.logo, .avatar { display: grid; place-items: center; background: var(--accent); color: var(--on-accent); flex: 0 0 auto; }
+.logo { width: 34px; height: 34px; border-radius: 8px; }
+.brand strong { display: block; font-size: 17px; font-weight: 650; }
+.brand span { display: block; color: var(--soft); font-size: 12px; }
+.sidebar-close { display: none !important; margin-left: auto; }
+.new-chat { display: flex; align-items: center; gap: 10px; margin: 4px 16px 12px; padding: 10px 12px; text-align: left; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; }
+.new-chat:hover { background: var(--card-hover); }
+.history-search { position: relative; margin: 0 16px 8px; }
+.history-search > .icon { position: absolute; top: 12px; left: 11px; color: var(--soft); pointer-events: none; }
+.history-search input { padding-left: 39px; font-size: 14px; background: transparent; }
+.history-pane { min-height: 0; overflow: auto; padding: 0 8px 12px; scrollbar-width: thin; }
+.history-title { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 8px; font-size: 13px; color: var(--soft); }
+.history-item { display: flex; align-items: center; gap: 2px; min-width: 0; border-radius: 8px; margin: 3px 0; }
+.history-item:hover, .history-item.selected { background: var(--card-hover); }
+.history-item.selected { box-shadow: inset 2px 0 var(--accent); }
+.history-open { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 6px 10px 12px; border: 0; background: transparent; text-align: left; border-radius: 8px; }
+.thumbs { width: 34px; height: 34px; flex: 0 0 34px; }
+.thumbs img, .thumb-empty { display: block; width: 34px; height: 34px; border-radius: 5px; object-fit: cover; background: var(--panel-strong); border: 1px solid var(--line); }
+.thumb-empty { display: grid; place-items: center; color: var(--soft); }
 .history-copy { min-width: 0; }
-.history-copy strong {
-  display: block;
-  color: #ececec;
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.history-copy small {
-  display: block;
-  color: var(--soft);
-  font-size: 11px;
-  margin-top: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.history-delete {
-  opacity: 0;
-  width: 28px;
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: var(--soft);
-  background: transparent;
-  cursor: pointer;
-}
-.history-delete:hover { color: #fff; border-color: var(--line); background: rgba(255, 255, 255, 0.08); }
-
-.empty-history {
-  margin: 8px;
-  padding: 18px 12px;
-  border: 1px dashed var(--line);
-  border-radius: 16px;
-  color: var(--soft);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.side-foot {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border-top: 1px solid var(--line);
-}
-
-.status-chip, .top-status {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  color: var(--muted);
-  background: var(--card);
-  padding: 9px 10px;
-  font: 12px/1.35 var(--mono);
-}
-
-.top-status {
-  cursor: pointer;
-  max-width: min(42vw, 420px);
-}
-.top-status:hover { color: #fff; border-color: var(--line-strong); background: var(--card-hover); }
-.status-chip span:last-child, .top-status span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 99px;
-  background: var(--ok);
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.36);
-}
-.dot.bad { background: var(--bad); box-shadow: none; }
-.dot.warn { background: var(--warn); box-shadow: 0 0 14px rgba(255, 255, 255, 0.18); }
-
-.main {
-  min-width: 0;
-  height: 100vh;
-  display: grid;
-  grid-template-rows: 70px minmax(0, 1fr);
-}
-
-.topbar {
-  height: 70px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 0 22px;
-  border-bottom: 1px solid var(--line);
-  background: rgba(8, 8, 9, 0.52);
-  backdrop-filter: blur(24px);
-}
-
-.model-pill {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-  font-weight: 950;
-  letter-spacing: -0.02em;
-}
-.model-pill span {
-  min-width: 0;
-  color: var(--soft);
-  font: 12px var(--mono);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.top-actions { display: flex; align-items: center; gap: 8px; }
-.icon-btn, .btn {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  color: var(--text);
-  background: var(--card);
-  padding: 10px 12px;
-  cursor: pointer;
-  font-weight: 900;
-}
-.icon-btn:hover, .btn:hover { background: var(--card-hover); border-color: var(--line-strong); }
-.btn.primary {
-  color: #090909;
-  border-color: #fff;
-  background: linear-gradient(180deg, #fff, #d8d8d8);
-}
-.btn.danger { color: #f1f1f1; background: rgba(255, 255, 255, 0.035); }
-
-.workspace {
-  min-height: 0;
-  overflow: auto;
-  scroll-behavior: smooth;
-}
-.conversation {
-  width: min(920px, calc(100% - 40px));
-  margin: 0 auto;
-  padding: 34px 0 180px;
-}
-
-.setup-notice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 18px;
-  padding: 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: 20px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
-  box-shadow: var(--shadow);
-}
-.setup-notice b { display: block; margin-bottom: 3px; }
-.setup-notice span { color: var(--muted); font-size: 13px; line-height: 1.6; }
-.version-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  color: var(--soft);
-  font: 12px/1.45 var(--mono);
-}
-.version-line a {
-  color: #e8e8e8;
-  text-decoration: none;
-}
-.version-line a:hover { text-decoration: underline; }
-.link-btn {
-  border: 0;
-  background: transparent;
-  color: #e8e8e8;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-}
-.link-btn:hover { text-decoration: underline; }
-.update-card {
-  display: grid;
-  gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.045);
-  padding: 11px;
-}
-.update-card b { display: block; color: #fff; margin-bottom: 2px; }
-.update-card span {
-  display: block;
-  color: var(--muted);
-  font: 12px/1.55 var(--mono);
-  word-break: break-word;
-}
-
-.hero {
-  min-height: calc(100vh - 330px);
-  display: grid;
-  place-items: center;
-  text-align: center;
-}
-.hero-inner { max-width: 740px; }
-.hero h1 {
-  margin: 0 0 12px;
-  font-size: clamp(34px, 5vw, 58px);
-  letter-spacing: -0.07em;
-  line-height: 0.98;
-}
-.hero p {
-  width: min(650px, 100%);
-  margin: 0 auto;
-  color: var(--muted);
-  font-size: 16px;
-  line-height: 1.75;
-}
-
-.messages {
-  display: grid;
-  gap: 22px;
-}
-.message {
-  animation: rise 0.22s ease both;
-}
-@keyframes rise {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.message.assistant {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 13px;
-}
-.message.user {
-  display: flex;
-  justify-content: flex-end;
-}
-.avatar {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  color: #050505;
-  background: linear-gradient(145deg, #fff, #c8c8c8);
-  font-size: 12px;
-  font-weight: 1000;
-}
-
-.bubble {
-  min-width: 0;
-  color: #ededed;
-  line-height: 1.74;
-  white-space: pre-wrap;
-}
-.message.assistant .bubble { padding-top: 6px; }
-.message.user .bubble {
-  max-width: min(76%, 720px);
-  border-radius: 24px 24px 7px 24px;
-  color: #050505;
-  background: linear-gradient(180deg, #fff, #d7d7d7);
-  padding: 13px 15px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
-}
-
-.meta {
-  color: var(--soft);
-  font: 12px/1.45 var(--mono);
-  margin-top: 8px;
-}
-.message.user .meta { color: #444; }
-
-.attachment-grid {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-.attachment-grid img {
-  width: 76px;
-  height: 76px;
-  border-radius: 14px;
-  object-fit: cover;
-  border: 1px solid rgba(0, 0, 0, 0.18);
-  background: #111;
-}
-.message.assistant .attachment-grid img { border-color: var(--line); }
-
-.typing {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-}
-.spinner {
-  width: 15px;
-  height: 15px;
-  border-radius: 99px;
-  border: 2px solid rgba(255, 255, 255, 0.18);
-  border-top-color: #fff;
-  animation: spin 0.8s linear infinite;
-}
+.history-copy strong, .history-copy small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-copy strong { font-size: 14px; font-weight: 500; color: var(--text); }
+.history-copy small { font-size: 12px; margin-top: 2px; color: var(--soft); }
+.history-delete { display: grid; place-items: center; width: 44px; flex: 0 0 44px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--soft); }
+.history-delete:hover { color: var(--text); background: var(--panel); }
+.history-delete .icon { width: 17px; height: 17px; }
+.empty-history { padding: 24px 12px; font-size: 14px; color: var(--soft); line-height: 1.8; }
+.history-more { display: block; width: calc(100% - 16px); margin: 8px; }
+.history-note { color: var(--soft); font-size: 12px; padding: 0 12px; }
+.side-foot { padding: 12px 16px; border-top: 1px solid var(--line); }
+.side-foot .status-chip { min-height: 32px; padding: 0; border: 0; background: transparent; font-size: 13px; }
+#baseStatus { display: none; }
+.version-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--soft); font-size: 13px; }
+.link-btn { background: transparent; color: var(--muted); border: 0; padding: 6px 0; text-decoration: underline; text-underline-offset: 4px; }
+.status-chip, .top-status { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--muted); }
+.status-chip { padding: 10px 0; }
+.status-chip span:last-child, .top-status span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-status { border: 0; border-radius: 8px; padding: 8px 12px; background: transparent; }
+.top-status:hover { background: var(--card); }
+.dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--ok); }
+.dot.bad { background: transparent; border: 1px solid var(--soft); }
+.dot.warn { background: var(--warn); }
+.main { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.topbar { min-height: 76px; padding: 12px 32px; display: flex; align-items: center; gap: 12px; }
+.model-pill { display: flex; align-items: baseline; gap: 12px; min-width: 0; margin-right: auto; font-size: 17px; font-weight: 600; }
+.model-pill span { max-width: 260px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; font-weight: 400; color: var(--soft); }
+.top-actions { display: flex; align-items: center; gap: 4px; }
+.icon-btn, .btn, .small-btn, .more-settings, .stop-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 9px 14px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); color: var(--text); text-decoration: none; font-size: 14px; line-height: 1.4; }
+.icon-btn { width: 44px; padding: 10px; background: transparent; border-color: transparent; }
+.icon-btn:hover, .btn:hover, .small-btn:hover, .more-settings:hover, .stop-btn:hover { background: var(--card-hover); }
+.btn.primary, .send { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.btn.primary:hover, .send:hover { opacity: .87; }
+.btn.danger { color: var(--text); border-style: dashed; }
+.workspace { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.conversation { width: min(840px, calc(100% - 64px)); margin: 0 auto; padding: 28px 0 32px; }
+.setup-notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
+.setup-notice b { display: block; font-weight: 600; }
+.setup-notice span { display: block; color: var(--muted); font-size: 14px; margin-top: 4px; }
+.setup-notice button { flex-shrink: 0; }
+.hero { min-height: min(380px, 45vh); display: grid; align-items: center; text-align: center; }
+.hero-inner { padding: 40px 0; }
+.hero h1 { margin: 0; font-size: 32px; line-height: 1.45; font-weight: 550; }
+.hero p { margin: 12px 0 0; color: var(--soft); font-size: 15px; }
+.messages { display: grid; gap: 32px; }
+.message { min-width: 0; }
+.message.assistant { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 14px; }
+.message.user { display: flex; justify-content: flex-end; }
+.avatar { width: 32px; height: 32px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+.bubble { min-width: 0; line-height: 1.85; overflow-wrap: anywhere; }
+.message.assistant .bubble { padding-top: 2px; }
+.message.user .bubble { max-width: 85%; white-space: pre-wrap; background: var(--card); padding: 12px 18px; border-radius: 8px; }
+.meta { font-size: 12px; color: var(--soft); margin-top: 8px; }
+.attachment-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.attachment-grid img { width: 88px; height: 88px; border-radius: 6px; object-fit: contain; background: var(--panel-strong); border: 1px solid var(--line); }
+.typing { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); font-size: 15px; }
+.spinner { width: 16px; height: 16px; flex: 0 0 16px; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-.result-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.result-head strong { letter-spacing: -0.02em; }
-.result-head span { color: var(--soft); font-size: 13px; }
+.result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.result-head strong { font-weight: 600; }
+.result-head span { font-size: 13px; color: var(--soft); }
 .result-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-.small-btn {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--card);
-  color: var(--text);
-  padding: 8px 10px;
-  cursor: pointer;
-  font-weight: 900;
-  font-size: 12px;
+.image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 16px; }
+.image-card { width: 100%; min-width: 0; max-width: 680px; margin: 0 auto; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.image-card img { display: block; width: 100%; max-height: 640px; object-fit: contain; background: var(--panel-strong); }
+.image-preview { display: block; width: 100%; padding: 0; border: 0; background: var(--panel-strong); cursor: zoom-in; }
+.image-preview:focus-visible { outline-offset: -4px; }
+.image-viewer { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px; background: #00000080; }
+.viewer-panel { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); }
+.viewer-head, .viewer-foot { display: flex; align-items: center; gap: 12px; padding: 12px 20px; }
+.viewer-head { border-bottom: 1px solid var(--line); }
+.viewer-head strong { font-size: 16px; font-weight: 600; margin-right: auto; }
+.viewer-counter { color: var(--soft); font-size: 14px; }
+.viewer-stage { position: relative; min-width: 0; min-height: 0; overflow: auto; background: var(--sidebar); overscroll-behavior: contain; }
+.viewer-canvas { display: grid; place-items: center; width: max-content; min-width: 100%; min-height: 100%; padding: 16px; }
+.viewer-canvas img { display: block; width: auto; height: auto; flex-shrink: 0; }
+.viewer-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 24px; color: var(--muted); text-align: center; }
+.viewer-foot { justify-content: space-between; flex-wrap: wrap; border-top: 1px solid var(--line); }
+.viewer-navigation, .viewer-actions, .viewer-zoom { display: flex; align-items: center; gap: 6px; }
+.viewer-zoom { border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.viewer-zoom button { min-height: 44px; padding: 8px 12px; border: 0; border-radius: 5px; background: transparent; font-size: 14px; }
+.viewer-zoom button[aria-pressed="true"] { color: var(--text); background: var(--card-hover); }
+.viewer-dimensions { color: var(--soft); font-size: 13px; }
+.previous-icon { transform: rotate(-90deg); }
+.next-icon { transform: rotate(90deg); }
+@media (max-width: 600px) {
+  .image-viewer { padding: 10px; }
+  .viewer-head, .viewer-foot { padding: 10px; gap: 8px; }
+  .viewer-actions { margin-left: auto; }
+  .viewer-dimensions { display: none; }
+  .viewer-zoom button { padding: 8px; font-size: 13px; }
 }
-.small-btn:hover { border-color: var(--line-strong); background: var(--card-hover); }
-
-.image-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-}
-.image-card {
-  width: 100%;
-  max-width: 680px;
-  margin: 0 auto;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
-}
-.image-card img {
-  display: block;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  object-fit: cover;
-  background: #050505;
-}
-.image-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 10px;
-}
-.image-actions button, .image-actions a {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.055);
-  color: #f5f5f5;
-  text-align: center;
-  text-decoration: none;
-  padding: 9px;
-  cursor: pointer;
-  font-weight: 900;
-  font-size: 12px;
-}
-.image-actions button:hover, .image-actions a:hover { background: rgba(255, 255, 255, 0.1); }
-
-.error-card {
-  display: grid;
-  gap: 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.055);
-  padding: 14px;
-}
-.error-card b { color: #fff; }
-.error-card pre {
-  margin: 0;
-  color: #d8d8d8;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font: 12px/1.55 var(--mono);
-}
-
-.composer-wrap {
-  position: fixed;
-  left: 304px;
-  right: 0;
-  bottom: 0;
-  padding: 34px 18px 18px;
-  background: linear-gradient(180deg, rgba(5, 5, 5, 0), rgba(5, 5, 5, 0.9) 26%, #050505 100%);
-  pointer-events: none;
-}
-.composer {
-  width: min(920px, calc(100vw - 340px));
-  margin: 0 auto;
-  border: 1px solid var(--line-strong);
-  border-radius: 28px;
-  background: rgba(18, 18, 20, 0.82);
-  backdrop-filter: blur(28px) saturate(1.25);
-  box-shadow: var(--shadow);
-  padding: 10px;
-  pointer-events: auto;
-}
-.composer.dragging {
-  outline: 2px solid rgba(255, 255, 255, 0.72);
-  outline-offset: 3px;
-}
-
-.file-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  padding: 0 4px 9px;
-}
-.file-pill {
-  display: inline-grid;
-  grid-template-columns: 42px minmax(0, 160px) auto;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.055);
-  padding: 6px;
-}
-.file-pill img {
-  width: 42px;
-  height: 42px;
-  border-radius: 11px;
-  object-fit: cover;
-  background: #050505;
-}
-.file-pill span {
-  min-width: 0;
-  color: #dedede;
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.file-pill button {
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: 10px;
-  color: var(--muted);
-  background: transparent;
-  cursor: pointer;
-  font-weight: 1000;
-}
-.file-pill button:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
-
-.input-line {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 8px;
-}
-.upload {
-  min-width: 108px;
-  height: 46px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 1px solid var(--line);
-  border-radius: 17px;
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
-  cursor: pointer;
-  font-weight: 900;
-}
-.upload:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--line-strong); }
-
-.prompt {
-  min-height: 46px;
-  max-height: 168px;
-  resize: none;
-  border: 0;
-  outline: none;
-  color: var(--text);
-  background: transparent;
-  padding: 11px 6px;
-  line-height: 1.55;
-}
-.prompt::placeholder { color: #77777c; }
-
-.send {
-  height: 46px;
-  min-width: 86px;
-  border: 0;
-  border-radius: 17px;
-  color: #050505;
-  background: linear-gradient(180deg, #fff, #d4d4d4);
-  cursor: pointer;
-  font-weight: 1000;
-}
-.send:hover { filter: brightness(1.04); }
-.send:disabled, .upload:disabled, .prompt:disabled {
-  opacity: 0.58;
-  cursor: wait;
-}
-button:disabled { opacity: 0.52; cursor: not-allowed; }
-
-.composer-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 9px 5px 0;
-  color: var(--soft);
-  font-size: 12px;
-}
-.size-presets {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-.size-presets > span { margin-right: 3px; color: var(--soft); }
-.size-preset, .more-settings, .stop-btn {
-  min-height: 34px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.045);
-  padding: 7px 10px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 900;
-}
-.size-preset.active {
-  color: #050505;
-  border-color: #fff;
-  background: linear-gradient(180deg, #fff, #d8d8d8);
-}
-.more-settings:hover, .size-preset:hover, .stop-btn:hover {
-  color: #fff;
-  border-color: var(--line-strong);
-  background: var(--card-hover);
-}
-.composer-status-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 24px;
-  padding: 5px 5px 0;
-  color: var(--soft);
-  font-size: 12px;
-}
-.mode-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.generation-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 9px 4px 0;
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  background: rgba(255, 255, 255, 0.055);
-  padding: 9px 10px;
-}
+.image-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px; }
+.image-actions button, .image-actions a { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: center; text-decoration: none; font-size: 14px; padding: 8px; }
+.image-actions button:hover, .image-actions a:hover { background: var(--card-hover); }
+.error-card { display: grid; gap: 12px; padding: 16px 0 16px 18px; border-left: 2px solid var(--line-strong); }
+.error-card pre { margin: 0; color: var(--muted); font: 14px/1.75 var(--font); white-space: pre-wrap; overflow-wrap: anywhere; }
+.composer-wrap { min-width: 0; padding: 8px 32px max(20px, env(safe-area-inset-bottom)); background: var(--bg); }
+.composer { width: min(840px, 100%); margin: 0 auto; padding: 12px; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--panel); box-shadow: 0 3px 16px #00000006; }
+.composer:focus-within { border-color: var(--soft); }
+.composer.dragging { outline: 2px solid var(--accent); outline-offset: 3px; }
+.file-strip { display: flex; gap: 8px; overflow-x: auto; max-height: 90px; scrollbar-width: thin; }
+.file-strip:not(:empty) { padding-bottom: 10px; }
+.file-pill { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; max-width: 240px; border: 1px solid var(--line); border-radius: 8px; padding: 5px; background: var(--card); }
+.file-pill img { width: 42px; height: 42px; border-radius: 5px; object-fit: cover; }
+.file-pill span { min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-pill button { width: 44px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--soft); }
+.file-pill button:hover { background: var(--card-hover); color: var(--text); }
+.input-line { display: grid; grid-template-columns: minmax(0, 1fr); }
+.prompt { width: 100%; min-height: 58px; max-height: 168px; resize: none; border: 0; background: transparent; padding: 8px 8px 12px; outline: 0; line-height: 1.65; font-size: 16px; }
+.prompt:focus-visible { outline: none; }
+.prompt::placeholder { color: var(--soft); }
+.composer-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.upload { flex-shrink: 0; }
+.quick-model { min-width: 0; max-width: 280px; flex: 1; }
+.quick-model select { padding: 8px 28px 8px 10px; font-size: 14px; background: transparent; border-color: transparent; }
+.quick-model select:hover { background: var(--card); }
+.send { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 92px; height: 44px; margin-left: auto; padding: 8px 14px; border: 1px solid var(--accent); border-radius: 8px; font-size: 15px; }
+.composer-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); margin-top: 8px; padding: 8px 2px 0; font-size: 13px; color: var(--soft); }
+.size-presets { display: inline-flex; align-items: center; gap: 2px; }
+.size-preset { min-width: 54px; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 14px; }
+.size-preset:hover { background: var(--card); }
+.size-preset.active { background: var(--card-hover); color: var(--text); font-weight: 600; }
+.composer-options { display: flex; align-items: center; gap: 6px; }
+.more-settings { border: 0; padding: 8px; background: transparent; }
+.composer-status-line { display: none; }
+.generation-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); margin-top: 8px; padding: 12px 2px 0; }
 .generation-copy { min-width: 0; display: grid; gap: 2px; }
-.generation-copy b { font-size: 12px; }
-.generation-copy span { color: var(--muted); font: 11px/1.45 var(--mono); }
-.stop-btn { flex: 0 0 auto; color: #f2f2f2; }
-
-.progress {
-  height: 4px;
-  overflow: hidden;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.08);
-  margin: 9px 5px 0;
-}
-.progress span {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: #fff;
-  transition: width 0.25s ease;
-}
-
-.toast {
-  position: fixed;
-  right: 20px;
-  bottom: 150px;
-  z-index: 70;
-  max-width: min(560px, calc(100vw - 32px));
-  border: 1px solid var(--line-strong);
-  border-radius: 18px;
-  color: #ededed;
-  background: rgba(20, 20, 22, 0.92);
-  backdrop-filter: blur(22px);
-  box-shadow: var(--shadow);
-  padding: 13px 15px;
-  white-space: pre-wrap;
-  font: 13px/1.55 var(--mono);
-}
-
-.scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  background: rgba(0, 0, 0, 0.52);
-  backdrop-filter: blur(10px);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-.scrim.open { opacity: 1; pointer-events: auto; }
-
-.wizard {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  background: rgba(0, 0, 0, 0.62);
-  backdrop-filter: blur(16px);
-}
-.wizard-card {
-  width: min(620px, 100%);
-  border: 1px solid var(--line-strong);
-  border-radius: 28px;
-  background: rgba(15, 15, 16, 0.96);
-  box-shadow: var(--shadow);
-  padding: 22px;
-}
-.wizard-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-.wizard-head h2 {
-  margin: 0 0 6px;
-  font-size: 26px;
-  letter-spacing: -0.05em;
-}
-.wizard-head p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.65;
-}
-.wizard-steps {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 16px;
-}
-.wizard-step {
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.045);
-  padding: 10px;
-  color: #dcdcdc;
-  font-size: 12px;
-  line-height: 1.45;
-}
-.wizard-step b { display: block; color: #fff; margin-bottom: 3px; }
-.wizard-form {
-  display: grid;
-  gap: 11px;
-}
-.wizard-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  margin-top: 16px;
-}
-.wizard-actions .btn { flex: 1; min-width: 128px; }
-.wizard-advanced {
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.035);
-  padding: 0 12px;
-}
-.wizard-advanced summary {
-  cursor: pointer;
-  color: var(--muted);
-  padding: 11px 0;
-  font-size: 13px;
-  font-weight: 900;
-}
-.wizard-advanced[open] summary { color: #fff; }
-.wizard-advanced .wizard-form { padding: 0 0 12px; }
-.connection-status {
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.035);
-  padding: 10px 11px;
-  font-size: 12px;
-  line-height: 1.55;
-}
-.connection-status.ok { color: #fff; border-color: var(--line-strong); }
-
-.drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  z-index: 45;
-  width: min(486px, 100vw);
-  height: 100vh;
-  display: grid;
-  grid-template-rows: 70px minmax(0, 1fr);
-  border-left: 1px solid var(--line-strong);
-  background: rgba(12, 12, 13, 0.94);
-  backdrop-filter: blur(30px) saturate(1.2);
-  box-shadow: -30px 0 90px rgba(0, 0, 0, 0.55);
-  transform: translateX(104%);
-  transition: transform 0.23s ease;
-}
-.drawer.open { transform: translateX(0); }
-.drawer-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--line);
-}
-.drawer-head strong { letter-spacing: -0.02em; }
-.drawer-body {
-  min-height: 0;
-  overflow: auto;
-  display: grid;
-  gap: 13px;
-  padding: 16px;
-}
-.drawer-card {
-  display: grid;
-  gap: 12px;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.045);
-  padding: 14px;
-}
-.drawer-card h3 {
-  margin: 0;
-  font-size: 14px;
-  letter-spacing: -0.01em;
-}
-.drawer-card > summary {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  list-style: none;
-  font-size: 14px;
-  font-weight: 950;
-}
-.drawer-card > summary::-webkit-details-marker { display: none; }
-.drawer-card > summary::after {
-  content: "+";
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  color: var(--muted);
-}
-.drawer-card[open] > summary::after { content: "-"; color: #fff; }
-.drawer-card > summary span {
-  display: block;
-  color: var(--soft);
-  margin-top: 3px;
-  font-size: 11px;
-  font-weight: 500;
-}
-.drawer-details { display: grid; gap: 12px; padding-top: 13px; }
-.field-help { color: var(--soft); font-size: 11px; line-height: 1.5; }
-.field {
-  display: grid;
-  gap: 7px;
-}
-.field span {
-  color: #d7d7d7;
-  font-size: 13px;
-  font-weight: 900;
-}
-input, select {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  color: var(--text);
-  background: var(--field);
-  outline: none;
-  padding: 11px;
-}
-input:focus, select:focus { border-color: rgba(255, 255, 255, 0.46); }
-.field-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.admin-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 9px;
-}
-.admin-actions .wide { grid-column: 1 / -1; }
-.storage-summary {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.storage-stat {
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  background: rgba(255, 255, 255, 0.035);
-  padding: 10px;
-}
-.storage-stat b { display: block; margin-bottom: 3px; font-size: 13px; }
-.storage-stat span { color: var(--muted); font: 11px/1.45 var(--mono); }
-.diagnostics { display: grid; gap: 9px; }
-.diag-card {
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  background: rgba(255, 255, 255, 0.04);
-  padding: 10px;
-}
-.diag-card b { display: block; font-size: 12px; margin-bottom: 4px; }
-.diag-card span {
-  display: block;
-  color: var(--muted);
-  word-break: break-all;
-  font: 12px/1.45 var(--mono);
-}
-.raw { border-top: 1px solid var(--line); padding-top: 12px; }
-.raw summary { cursor: pointer; color: #d4d4d4; font-weight: 900; }
-.raw pre {
-  overflow: auto;
-  max-height: 260px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  color: #e4e4e4;
-  background: #050505;
-  padding: 12px;
-  font-size: 12px;
-}
-
+.generation-copy b { font-size: 14px; font-weight: 600; }
+.generation-copy span { font-size: 13px; color: var(--soft); }
+.stop-btn { flex-shrink: 0; }
+.progress { height: 2px; overflow: hidden; border-radius: 2px; margin: 0 4px; }
+.progress:has(span[style*="width: 0"]) { height: 0; }
+.progress span { display: block; width: 0; height: 100%; background: var(--accent); transition: width .3s; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 100; width: max-content; max-width: min(560px, calc(100vw - 32px)); padding: 12px 18px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow); font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: none; }
+.scrim { position: fixed; inset: 0; z-index: 30; background: #00000038; opacity: 0; visibility: hidden; transition: opacity .18s, visibility .18s; }
+.scrim.open { opacity: 1; visibility: visible; }
+.drawer { position: fixed; top: 0; right: 0; z-index: 45; width: min(620px, 100vw); height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; background: var(--panel); border-left: 1px solid var(--line); box-shadow: var(--shadow); transform: translateX(101%); visibility: hidden; transition: transform .2s, visibility .2s; }
+.drawer.open { transform: translateX(0); visibility: visible; }
+.drawer-head { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 28px; }
+.drawer-head strong { font-size: 20px; font-weight: 600; }
+.settings-tabs { display: flex; padding: 0 24px; border-bottom: 1px solid var(--line); gap: 8px; }
+.settings-tab { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--soft); font-size: 15px; }
+.settings-tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.settings-tab:hover { background: var(--card); }
+.drawer-body { min-height: 0; overflow: auto; padding: 28px; }
+.settings-panel { display: grid; gap: 24px; }
+.settings-panel h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.settings-group { display: grid; gap: 18px; padding-top: 24px; border-top: 1px solid var(--line); }
+.field { display: grid; gap: 8px; min-width: 0; }
+.field > span { font-size: 14px; font-weight: 550; }
+.field-help { font-size: 13px; line-height: 1.65; color: var(--soft); }
+input, select { width: 100%; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--field); padding: 10px 12px; min-width: 0; }
+input::placeholder { color: var(--soft); }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.secret-field { display: flex; align-items: center; gap: 4px; }
+.secret-field input { flex: 1; }
+.admin-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.admin-actions .wide { flex-basis: 100%; }
+.connection-status { border-left: 2px solid var(--line-strong); padding: 10px 14px; color: var(--muted); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.connection-status.ok { border-left-color: var(--accent); }
+.settings-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 28px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--panel); }
+.settings-footer span { color: var(--soft); font-size: 13px; }
+.settings-footer button { flex-shrink: 0; }
+.theme-control { display: flex; border: 1px solid var(--line); border-radius: 8px; padding: 4px; gap: 4px; }
+.theme-control label { flex: 1; min-width: 0; position: relative; }
+.theme-control input { position: absolute; opacity: 0; width: 1px; height: 1px; min-height: 0; }
+.theme-control label span { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; border-radius: 5px; color: var(--muted); cursor: pointer; font-size: 14px; }
+.theme-control input:checked + span { background: var(--card-hover); color: var(--text); }
+.theme-control input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+.storage-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 16px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+.storage-stat b { display: block; font-size: 14px; font-weight: 550; margin-bottom: 4px; }
+.storage-stat span { color: var(--soft); font-size: 13px; }
+.data-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.data-row > div { min-width: 0; }
+.data-row b { display: block; font-size: 14px; font-weight: 550; }
+.data-row small { display: block; color: var(--soft); font-size: 13px; }
+.data-row button { flex-shrink: 0; }
+.update-card { display: grid; gap: 8px; border-left: 2px solid var(--accent); padding: 10px 16px; }
+.update-card span, .diag-card span { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.diagnostics { display: grid; gap: 16px; }
+.diag-card b, .diag-card span { display: block; }
+.diag-card b { font-size: 14px; font-weight: 550; margin-bottom: 4px; }
+.raw { border-top: 1px solid var(--line); padding-top: 16px; }
+.raw summary, .wizard-advanced summary { cursor: pointer; min-height: 44px; padding: 10px 0; font-size: 14px; color: var(--muted); }
+.raw pre { white-space: pre-wrap; max-height: 260px; overflow: auto; padding: 16px; background: var(--card); border-radius: 6px; font: 12px/1.7 var(--mono); overflow-wrap: anywhere; }
+.wizard { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: #00000050; padding: 24px; }
+.wizard-card { width: min(520px, 100%); max-height: calc(100dvh - 48px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 28px; }
+.wizard-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.wizard-head h2 { margin: 0 0 8px; font-size: 24px; font-weight: 600; }
+.wizard-head p { margin: 0; color: var(--muted); font-size: 14px; }
+.wizard-form { display: grid; gap: 18px; }
+.wizard-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.wizard-actions .btn.primary { flex: 1; }
+.wizard-advanced { border-top: 1px solid var(--line); }
+.wizard-advanced .wizard-form { padding-top: 12px; }
 .mobile-menu { display: none; }
-
-@media (max-width: 900px) {
-  .app { grid-template-columns: 1fr; }
-  .sidebar {
-    position: fixed;
-    inset: 0 auto 0 0;
-    z-index: 40;
-    width: min(304px, 86vw);
-    transform: translateX(-105%);
-    transition: transform 0.22s ease;
-  }
-  .sidebar.open { transform: translateX(0); }
-  .mobile-menu { display: inline-flex; }
-  .topbar {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    padding: 0 12px;
-  }
+@media (max-width: 1000px) {
+  .app { grid-template-columns: 232px minmax(0, 1fr); }
   .model-pill span { display: none; }
-  .top-status { display: none; }
-  .composer-wrap { left: 0; padding-left: 10px; padding-right: 10px; }
-  .composer { width: min(920px, calc(100vw - 20px)); }
-  .conversation { width: min(920px, calc(100% - 24px)); padding-bottom: 205px; }
-  .message.user .bubble { max-width: 88%; }
-  .composer-meta { align-items: flex-start; display: grid; }
-  .size-presets { overflow-x: auto; padding-bottom: 2px; }
-  .mode-hint { white-space: normal; }
-  .upload { min-width: 48px; padding: 0 12px; }
-  .upload span { display: none; }
-  .field-row { grid-template-columns: 1fr; }
+  .topbar { padding: 12px 24px; }
+  .conversation { width: calc(100% - 48px); }
+  .composer-wrap { padding-left: 24px; padding-right: 24px; }
 }
-
-@media (max-width: 520px) {
-  .top-actions .icon-btn { padding: 9px 10px; }
-  .conversation { padding-top: 24px; }
-  .hero h1 { font-size: 34px; }
-  .input-line { grid-template-columns: auto minmax(0, 1fr) auto; }
-  .send { min-width: 68px; }
-  .composer-meta { display: block; }
-  #composerConfigSummary, .composer-status-line { display: none; }
-  .size-presets { width: 100%; }
-  .size-presets > span { flex: 0 0 auto; }
-  .size-preset, .more-settings { flex: 1 0 auto; }
-  .wizard-steps { grid-template-columns: 1fr; }
-  .wizard { place-items: stretch; padding: 0; }
-  .wizard-card { width: 100%; max-height: 100dvh; overflow: auto; border-radius: 0; padding: 18px; }
-  .drawer { width: 100vw; }
-  .image-grid { grid-template-columns: 1fr; }
-  .admin-actions { grid-template-columns: 1fr; }
-  .storage-summary { grid-template-columns: 1fr; }
-  .generation-status { align-items: flex-start; }
+@media (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 40; width: min(300px, 88vw); transform: translateX(-101%); visibility: hidden; transition: transform .2s, visibility .2s; }
+  .sidebar.open { transform: translateX(0); visibility: visible; }
+  .sidebar-close, .mobile-menu { display: inline-flex !important; }
+  .topbar { min-height: 64px; padding: 10px 16px; gap: 8px; }
+  .conversation { width: calc(100% - 32px); padding-top: 16px; }
+  .composer-wrap { padding: 8px 16px max(12px, env(safe-area-inset-bottom)); }
+  .hero h1 { font-size: 28px; }
+  .hero { min-height: min(300px, 35vh); }
+  .message.user .bubble { max-width: 92%; }
+}
+@media (max-width: 480px) {
+  .topbar { padding: 8px 12px; gap: 4px; }
+  .top-status { padding: 8px; font-size: 12px; }
+  .model-pill { font-size: 16px; }
+  .conversation { width: calc(100% - 24px); padding-bottom: 24px; }
+  .composer-wrap { padding-left: 10px; padding-right: 10px; }
+  .composer { padding: 8px; border-radius: 12px; }
+  .quick-model select { font-size: 13px; padding-left: 4px; padding-right: 20px; }
+  .send { min-width: 76px; padding: 8px 10px; gap: 5px; }
+  .composer-toolbar { gap: 2px; flex-wrap: nowrap; }
+  .composer-meta { gap: 6px; }
+  .composer-options { gap: 2px; }
+  #composerConfigSummary { font-size: 12px; }
+  .size-preset { min-width: 46px; padding: 6px 8px; font-size: 13px; }
+  .more-settings { padding: 8px; }
+  .more-settings span { display: none; }
+  .message.assistant { grid-template-columns: minmax(0, 1fr); }
+  .avatar { display: none; }
+  .drawer-head { min-height: 64px; padding: 10px 20px; }
+  .settings-tabs { padding: 0 12px; gap: 0; }
+  .settings-tab { flex: 1; padding: 10px 8px; font-size: 14px; }
+  .settings-tab .icon { display: none; }
+  .drawer-body { padding: 24px 20px; }
+  .settings-footer { padding: 14px 20px; }
+  .field-row { gap: 12px; }
+  .data-row { align-items: flex-start; }
+  .wizard { padding: 12px; }
+  .wizard-card { padding: 24px 20px; max-height: calc(100dvh - 24px); }
+  .setup-notice { flex-wrap: wrap; }
+  .generation-status { gap: 8px; }
+  .generation-copy span { font-size: 12px; }
+}
+@media (max-width: 360px) {
+  .top-status { max-width: 98px; }
+  .field-row { grid-template-columns: 1fr; }
+  .hero h1 { font-size: 24px; }
+}
+@media (max-height: 650px) {
+  .hero { min-height: 140px; }
+  .hero-inner { padding: 20px 0; }
+  .prompt { max-height: 100px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
 </style>
 </head>
 <body>
-<div class="app">
-  <aside class="sidebar" id="sidebar">
+<!-- Curated Lucide icons, ISC License, Copyright (c) 2020-present Lucide Contributors.
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted,
+provided that the above copyright notice and this permission notice appear in all copies.
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL,
+DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE
+OR PERFORMANCE OF THIS SOFTWARE. -->
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
+<symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="m18 6-12 12M6 6l12 12"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="M20 7h-9M14 17H4M20 17h-2M6 7H4"/><circle cx="8" cy="7" r="3"/><circle cx="16" cy="17" r="3"/></symbol>
+<symbol id="i-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5"/></symbol>
+<symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m21.4 11.6-9.2 9.2a6 6 0 0 1-8.5-8.5l10-10a4 4 0 0 1 5.7 5.7l-10 10a2 2 0 0 1-2.8-2.8l9.2-9.2"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z"/></symbol>
+<symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8m-4-4v4"/></symbol>
+<symbol id="i-plug" viewBox="0 0 24 24"><path d="M12 22v-5M9 8V2m6 6V2M7 8h10v4a5 5 0 0 1-10 0Zm-3 0h16"/></symbol>
+<symbol id="i-drive" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="14" rx="2"/><path d="m6 14 2-10h8l2 10M6 18h.01M10 18h.01"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.36-6.36L21 8M21 3v5h-5M21 12A9 9 0 0 1 5.64 18.36L3 16m0 5v-5h5"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6l-1 14H6L5 6m4 0V3h6v3m-5 4v6m4-6v6"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24"><path d="m16 3 5 5M4 20l4-1L21 6a2.8 2.8 0 0 0-4-4L4 15Z"/></symbol>
+<symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+</svg>
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar" aria-label="对话记录">
     <div class="brand">
-      <div class="logo">AI</div>
-      <div><strong>ImageBot</strong><span>图片生成助手</span></div>
+      <div class="logo"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg></div>
+      <div><strong>ImageBot</strong><span>图片创作</span></div>
+      <button class="icon-btn sidebar-close" id="closeSidebarBtn" title="收起侧栏" aria-label="收起侧栏"><svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg></button>
     </div>
-    <button class="new-chat" id="newChatBtn">+ 新对话</button>
+    <button class="new-chat" id="newChatBtn"><svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg><span>新对话</span></button>
+    <label class="history-search"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg><span class="sr-only">搜索生成记录</span><input id="historySearch" type="search" placeholder="搜索生成记录" autocomplete="off" /></label>
     <div class="history-pane">
       <div class="history-title"><span>最近生成</span><span id="historyCount">0</span></div>
       <div id="historyList"></div>
+      <button class="btn history-more hidden" id="loadMoreHistoryBtn" type="button">加载更多</button>
+      <div class="history-note hidden" id="historyNote" role="status"></div>
     </div>
     <div class="side-foot">
-      <div class="status-chip" id="keyStatus"><span class="dot bad"></span><span>配置读取中</span></div>
-      <div class="status-chip" id="baseStatus"><span class="dot"></span><span>%%BASE_URL%%</span></div>
+      <div class="status-chip" id="keyStatus"><span class="dot bad"></span><span>读取配置中</span></div>
+      <div class="status-chip" id="baseStatus"><span>%%BASE_URL%%</span></div>
       <div class="version-line"><span id="sideVersion">%%APP_VERSION%%</span><button class="link-btn" id="sideUpdateBtn" type="button">检查更新</button></div>
     </div>
   </aside>
-
   <main class="main">
     <header class="topbar">
-      <button class="icon-btn mobile-menu" id="menuBtn" title="打开侧边栏">☰</button>
+      <button class="icon-btn mobile-menu" id="menuBtn" title="打开侧栏" aria-label="打开侧栏" aria-controls="sidebar" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg></button>
       <div class="model-pill">ImageBot <span id="modelLabel">%%MODEL%%</span></div>
       <div class="top-actions">
-        <button class="top-status" id="topStatus" title="打开设置"><span class="dot bad"></span><span>配置读取中</span></button>
-        <button class="icon-btn" id="adminBtn">设置</button>
+        <button class="top-status" id="topStatus" title="连接设置"><span class="dot bad"></span><span>读取配置中</span></button>
+        <button class="icon-btn" id="adminBtn" title="设置" aria-label="设置" aria-controls="drawer"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg></button>
       </div>
     </header>
-
-    <section class="workspace" id="workspace">
+    <section class="workspace" id="workspace" aria-label="当前对话">
       <div class="conversation">
         <div class="setup-notice hidden" id="setupNotice">
-          <div><b>还没有可用的接口密钥</b><span>真实生成前需要先完成接口配置；如果只是演示界面，可以在设置里打开演示模式（Mock）。</span></div>
-          <button class="btn primary" id="setupNoticeBtn">打开设置</button>
+          <div><b>连接你的图片服务</b><span>填写接口密钥后即可开始创作。</span></div>
+          <button class="btn primary" id="setupNoticeBtn">开始配置</button>
         </div>
-
         <section class="hero" id="hero">
-          <div class="hero-inner">
-            <h1>想生成什么图片？</h1>
-            <p>输入一句话即可生成图片。需要改图时，先上传、拖拽或粘贴图片，再说想怎么修改。</p>
-          </div>
+          <div class="hero-inner"><h1>今天，想创作什么？</h1><p>让脑海中的画面，在这里成真。</p></div>
         </section>
-
-        <section class="messages" id="messages"></section>
+        <section class="messages" id="messages" aria-label="生成结果"></section>
       </div>
     </section>
+    <div class="composer-wrap">
+      <div class="composer" id="composer">
+        <div class="file-strip" id="fileStrip" aria-label="参考图片"></div>
+        <div class="input-line">
+          <label class="sr-only" for="promptInput">描述想生成或修改的图片</label>
+          <textarea class="prompt" id="promptInput" rows="2" placeholder="描述你想要的画面，或上传图片进行修改" title="Enter 生成，Shift+Enter 换行"></textarea>
+        </div>
+        <div class="composer-toolbar">
+          <button class="icon-btn upload" id="uploadBtn" title="添加参考图片" aria-label="添加参考图片"><svg class="icon" aria-hidden="true"><use href="#i-paperclip"></use></svg></button>
+          <label class="quick-model"><span class="sr-only">生成模型</span><select id="quickModel" aria-label="生成模型"></select></label>
+          <button class="send" id="sendBtn"><span>生成</span><svg class="icon" aria-hidden="true"><use href="#i-up"></use></svg></button>
+        </div>
+        <input id="imageInput" class="hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple />
+        <div class="composer-meta">
+          <div class="size-presets" role="group" aria-label="图片比例">
+            <button class="size-preset active" type="button" data-size="1024x1024" aria-pressed="true">方形</button>
+            <button class="size-preset" type="button" data-size="1536x1024" aria-pressed="false">横图</button>
+            <button class="size-preset" type="button" data-size="1024x1536" aria-pressed="false">竖图</button>
+          </div>
+          <div class="composer-options"><span id="composerConfigSummary">1 张 · 自动</span><button class="more-settings" id="moreSettingsBtn" type="button" title="图片设置" aria-label="图片设置"><svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg><span>参数</span></button></div>
+        </div>
+        <div class="composer-status-line"><span id="modeHint"></span></div>
+        <div class="generation-status hidden" id="generationStatus" role="status">
+          <div class="generation-copy"><b id="generationTitle">正在生成图片</b><span id="generationTimer" aria-live="off">已等待 0 秒</span></div>
+          <button class="stop-btn" id="stopBtn" type="button">停止等待</button>
+        </div>
+        <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
+      </div>
+    </div>
   </main>
 </div>
-
-<div class="composer-wrap">
-  <div class="composer" id="composer">
-    <div class="file-strip" id="fileStrip"></div>
-    <div class="input-line">
-      <button class="upload" id="uploadBtn" title="上传图片"><b>+</b><span>上传图片</span></button>
-      <textarea class="prompt" id="promptInput" rows="1" placeholder="描述想生成或修改的图片"></textarea>
-      <button class="send" id="sendBtn">生成</button>
-    </div>
-    <input id="imageInput" class="hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple />
-    <div class="composer-meta">
-      <div class="size-presets" aria-label="常用图片尺寸">
-        <span>尺寸</span>
-        <button class="size-preset active" type="button" data-size="1024x1024">方形</button>
-        <button class="size-preset" type="button" data-size="1536x1024">横图</button>
-        <button class="size-preset" type="button" data-size="1024x1536">竖图</button>
-        <button class="more-settings" id="moreSettingsBtn" type="button">更多设置</button>
-      </div>
-      <span id="composerConfigSummary">1 张 · 高清</span>
-    </div>
-    <div class="composer-status-line"><span class="mode-hint" id="modeHint">直接输入文字即可生图 · Enter 生成，Shift+Enter 换行</span></div>
-    <div class="generation-status hidden" id="generationStatus">
-      <div class="generation-copy"><b id="generationTitle">正在生成图片</b><span id="generationTimer">已等待 0 秒，请不要关闭窗口</span></div>
-      <button class="stop-btn" id="stopBtn" type="button">停止等待</button>
-    </div>
-    <div class="progress"><span id="progressBar"></span></div>
-  </div>
-</div>
-
-<div class="toast hidden" id="toast"></div>
+<div class="toast hidden" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 <div class="scrim" id="scrim"></div>
-
-<section class="wizard hidden" id="setupWizard" aria-modal="true" role="dialog">
+<section class="wizard hidden" id="setupWizard" aria-modal="true" role="dialog" aria-labelledby="wizardTitle" tabindex="-1">
   <div class="wizard-card">
     <div class="wizard-head">
-      <div>
-        <h2>首次使用配置</h2>
-        <p>只需要填一次接口密钥。保存后就可以直接像聊天一样生成图片。</p>
-      </div>
-      <button class="icon-btn" id="closeWizardBtn">稍后</button>
-    </div>
-    <div class="wizard-steps">
-      <div class="wizard-step"><b>1. 填写密钥</b><span>把中转后台的接口密钥粘贴到下面。</span></div>
-      <div class="wizard-step"><b>2. 保存</b><span>配置会写入本地 config.ini，不会上传到仓库。</span></div>
-      <div class="wizard-step"><b>3. 开始生成</b><span>回到输入框描述你想要的图片。</span></div>
+      <div><h2 id="wizardTitle">欢迎使用 ImageBot</h2><p>连接你的图片服务，开始第一次创作。</p></div>
+      <button class="icon-btn" id="closeWizardBtn" title="稍后配置" aria-label="稍后配置"><svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg></button>
     </div>
     <div class="wizard-form">
-      <label class="field"><span>接口密钥</span><input id="wizardApiKey" type="password" placeholder="粘贴你的接口密钥" autocomplete="off" /></label>
+      <label class="field"><span>接口密钥</span><input id="wizardApiKey" type="password" placeholder="粘贴接口密钥" autocomplete="off" /></label>
       <details class="wizard-advanced">
-        <summary>接口地址和模型（一般不用修改）</summary>
+        <summary>接口地址和模型</summary>
         <div class="wizard-form">
-          <label class="field"><span>接口地址</span><input id="wizardBaseUrl" value="%%BASE_URL%%" autocomplete="off" /></label>
-          <label class="field"><span>模型</span><input id="wizardModel" value="%%MODEL%%" autocomplete="off" /></label>
+          <label class="field"><span>接口地址</span><input id="wizardBaseUrl" value="%%BASE_URL%%" autocomplete="off" inputmode="url" spellcheck="false" /></label>
+          <label class="field"><span>模型名称</span><input id="wizardModel" value="%%MODEL%%" autocomplete="off" spellcheck="false" /></label>
         </div>
       </details>
-      <div class="connection-status hidden" id="wizardConnectionStatus"></div>
+      <div class="connection-status hidden" id="wizardConnectionStatus" role="status"></div>
     </div>
     <div class="wizard-actions">
       <button class="btn primary" id="wizardSaveBtn">保存并开始</button>
       <button class="btn" id="wizardTestBtn">测试连接</button>
-      <button class="btn" id="wizardMockBtn">先试用演示模式</button>
+      <button class="btn wide" id="wizardMockBtn">体验演示</button>
     </div>
   </div>
 </section>
-
-<aside class="drawer" id="drawer" aria-hidden="true">
-  <div class="drawer-head">
-    <strong>设置</strong>
-    <button class="icon-btn" id="closeDrawerBtn">收起设置</button>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-modal="true" role="dialog" aria-labelledby="settingsTitle" tabindex="-1" inert>
+  <div class="drawer-head"><strong id="settingsTitle">设置</strong><button class="icon-btn" id="closeDrawerBtn" title="收起设置" aria-label="收起设置"><svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
+  <div class="settings-tabs" role="tablist" aria-label="设置分类">
+    <button class="settings-tab" id="tab-image" role="tab" aria-selected="true" aria-controls="advancedSettings" data-tab="image"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg>图片</button>
+    <button class="settings-tab" id="tab-connection" role="tab" aria-selected="false" aria-controls="connectionSettings" tabindex="-1" data-tab="connection"><svg class="icon" aria-hidden="true"><use href="#i-plug"></use></svg>连接</button>
+    <button class="settings-tab" id="tab-data" role="tab" aria-selected="false" aria-controls="storageSettings" tabindex="-1" data-tab="data"><svg class="icon" aria-hidden="true"><use href="#i-drive"></use></svg>数据</button>
+    <button class="settings-tab" id="tab-updates" role="tab" aria-selected="false" aria-controls="maintenanceSettings" tabindex="-1" data-tab="updates"><svg class="icon" aria-hidden="true"><use href="#i-refresh"></use></svg>更新</button>
   </div>
   <div class="drawer-body">
-    <section class="drawer-card">
-      <h3>常用设置</h3>
-      <label class="field"><span>接口地址</span><input id="baseUrl" value="%%BASE_URL%%" autocomplete="off" /><small class="field-help">通常保持默认，不要在末尾填写 /v1。</small></label>
-      <label class="field"><span>接口密钥</span><input id="apiKey" type="password" placeholder="已保存时可留空" autocomplete="off" /><small class="field-help">密钥只保存在这台电脑的 config.ini 中。</small></label>
-      <div class="admin-actions">
-        <button class="btn primary" id="saveConfigBtn">保存</button>
-        <button class="btn" id="testBtn">测试连接</button>
+    <section class="settings-panel" id="advancedSettings" role="tabpanel" aria-labelledby="tab-image">
+      <h3>图片生成</h3>
+      <label class="field"><span>模型</span><select id="modelPreset"><option value="">自定义模型</option></select><small class="field-help" id="modelHelp"></small></label>
+      <label class="field" id="customModelField"><span>自定义模型名称</span><input id="model" value="%%MODEL%%" autocomplete="off" spellcheck="false" /></label>
+      <div class="field-row">
+        <label class="field"><span>图片尺寸</span><input id="sizeInput" type="text" value="1024x1024" placeholder="例如 1536x864" autocomplete="off" spellcheck="false" /></label>
+        <label class="field"><span>生成数量</span><select id="countInput"><option value="1">1 张</option><option value="2">2 张</option><option value="4">4 张</option></select></label>
       </div>
-      <div class="connection-status" id="connectionStatus">正在读取本机配置...</div>
+      <div class="field-row">
+        <label class="field"><span>清晰度</span><select id="qualityInput"><option value="auto" selected>自动</option><option value="low">快速</option><option value="medium">标准</option><option value="high">高</option><option value="xhigh">极高</option><option value="max">最高</option></select></label>
+        <label class="field hidden" id="complexityField"><span>画面复杂度</span><select id="complexityInput"><option value="">默认（高）</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
+      </div>
+      <div class="field-row">
+        <label class="field"><span>背景</span><select id="backgroundInput"><option value="">默认</option><option value="auto">自动</option><option value="opaque">不透明</option><option value="transparent">透明</option></select></label>
+        <label class="field"><span>输出格式</span><select id="outputFormatInput"><option value="">默认</option><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WEBP</option></select></label>
+      </div>
+      <div class="settings-group">
+        <h3 id="appearanceLabel">界面外观</h3>
+        <div class="theme-control" role="radiogroup" aria-labelledby="appearanceLabel">
+          <label><input type="radio" name="theme" value="light" checked /><span><svg class="icon" aria-hidden="true"><use href="#i-sun"></use></svg>浅色</span></label>
+          <label><input type="radio" name="theme" value="dark" /><span><svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>深色</span></label>
+          <label><input type="radio" name="theme" value="system" /><span><svg class="icon" aria-hidden="true"><use href="#i-monitor"></use></svg>系统</span></label>
+        </div>
+      </div>
     </section>
-
-    <details class="drawer-card" id="advancedSettings">
-      <summary>高级设置<span>图片参数、模型、超时和演示模式</span></summary>
-      <div class="drawer-details">
-          <label class="field"><span>模型预设</span><select id="modelPreset"><option value="">自定义模型</option></select><small class="field-help" id="modelHelp">Flare 适合日常生图，Sunburst 适合精细编辑。</small></label>
-        <label class="field"><span>模型名称</span><input id="model" value="%%MODEL%%" autocomplete="off" /></label>
-        <div class="field-row">
-          <label class="field"><span>图片尺寸</span><input id="sizeInput" type="text" value="1024x1024" placeholder="例如 1536x864" autocomplete="off" /></label>
-          <label class="field"><span>生成数量</span><select id="countInput"><option value="1">1 张</option><option value="2">2 张</option><option value="4">4 张</option></select></label>
-        </div>
-        <div class="field-row">
-          <label class="field"><span>清晰度</span><select id="qualityInput"><option value="auto" selected>自动</option><option value="low">快速</option><option value="medium">标准</option><option value="high">高</option><option value="xhigh">极高</option><option value="max">最高</option></select></label>
-          <label class="field"><span>背景</span><select id="backgroundInput"><option value="">默认</option><option value="auto">自动</option><option value="opaque">不透明</option><option value="transparent">透明</option></select></label>
-        </div>
-        <label class="field"><span>输出格式</span><select id="outputFormatInput"><option value="">默认</option><option>png</option><option>jpeg</option><option>webp</option></select></label>
+    <section class="settings-panel hidden" id="connectionSettings" role="tabpanel" aria-labelledby="tab-connection">
+      <h3>接口连接</h3>
+      <label class="field"><span>接口地址</span><input id="baseUrl" value="%%BASE_URL%%" autocomplete="off" inputmode="url" spellcheck="false" /></label>
+      <div class="field"><label for="apiKey">接口密钥</label><div class="secret-field"><input id="apiKey" type="password" placeholder="保留已保存的密钥" autocomplete="off" /><button class="icon-btn" id="toggleKeyBtn" aria-label="显示密钥" title="显示密钥" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-eye"></use></svg></button></div><small class="field-help">只保存在你的电脑上。留空可保留现有密钥。</small></div>
+      <div class="admin-actions"><button class="btn" id="testBtn">测试连接</button></div>
+      <div class="connection-status" id="connectionStatus" role="status">正在读取配置...</div>
+      <div class="settings-group">
         <div class="field-row">
           <label class="field"><span>等待上限（秒）</span><input id="timeoutSecInput" type="number" min="10" max="1800" value="240" /></label>
-          <label class="field"><span>演示模式</span><select id="mockMode"><option value="0">关闭</option><option value="1">开启</option></select></label>
+          <label class="field"><span>运行模式</span><select id="mockMode"><option value="0">真实生成</option><option value="1">演示（不收费）</option></select></label>
         </div>
-        <label class="field"><span>接口兼容模式</span><select id="requestMode"><option value="auto">自动</option><option value="full">完整参数</option><option value="basic">基础参数</option></select><small class="field-help">自定义中转不支持清晰度、背景或格式时，选择“基础参数”。</small></label>
+        <label class="field"><span>接口兼容模式</span><select id="requestMode"><option value="auto">自动</option><option value="full">完整参数</option><option value="basic">基础参数</option></select><small class="field-help">接口不支持清晰度、背景等参数时，可改用基础参数。</small></label>
       </div>
-    </details>
-
-    <details class="drawer-card" id="storageSettings">
-      <summary>本地文件<span>查看占用空间，清理历史、图片和日志</span></summary>
-      <div class="drawer-details">
-        <div class="storage-summary" id="storageSummary">
-          <div class="storage-stat"><b>生成图片</b><span>读取中...</span></div>
-          <div class="storage-stat"><b>运行日志</b><span>读取中...</span></div>
-        </div>
-        <div class="admin-actions">
-          <button class="btn" id="clearHistoryBtn">仅清空历史</button>
-          <button class="btn danger" id="clearImagesBtn">清空图片和历史</button>
-          <button class="btn danger wide" id="clearLogsBtn">清空运行日志</button>
-          <button class="btn wide" id="exportHistoryBtn">导出历史记录</button>
-          <button class="btn danger wide" id="clearAllBtn">清空图片、历史和日志</button>
-        </div>
+    </section>
+    <section class="settings-panel hidden" id="storageSettings" role="tabpanel" aria-labelledby="tab-data">
+      <h3>本地数据</h3>
+      <div class="storage-summary" id="storageSummary"><div class="storage-stat"><b>图片与参考图</b><span>读取中...</span></div><div class="storage-stat"><b>运行日志</b><span>读取中...</span></div></div>
+      <div class="data-row"><div><b>导出记录</b><small>保存提示词和生成参数</small></div><button class="btn" id="exportHistoryBtn"><svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>导出</button></div>
+      <div class="data-row"><div><b>清空历史</b><small>保留已生成的图片文件</small></div><button class="btn" id="clearHistoryBtn">清空历史</button></div>
+      <div class="data-row"><div><b>清空图片和历史</b><small>图片与参考图将永久删除</small></div><button class="btn danger" id="clearImagesBtn">清空图片</button></div>
+      <div class="data-row"><div><b>清空运行日志</b><small>保留图片和历史</small></div><button class="btn" id="clearLogsBtn">清空日志</button></div>
+      <div class="settings-group"><div class="data-row"><div><b>清空所有本地数据</b><small>保留接口配置及版本备份</small></div><button class="btn danger" id="clearAllBtn">全部清空</button></div></div>
+    </section>
+    <section class="settings-panel hidden" id="maintenanceSettings" role="tabpanel" aria-labelledby="tab-updates">
+      <h3>软件更新</h3>
+      <div class="version-line"><span>当前版本</span><b id="drawerVersion">%%APP_VERSION%%</b></div>
+      <div class="admin-actions"><button class="btn primary" id="updateBtn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"></use></svg>检查更新</button><button class="btn hidden" id="rollbackBtn">恢复上一版本</button></div>
+      <div class="update-card hidden" id="updatePanel" role="status"></div>
+      <div class="settings-group">
+        <h3>问题诊断</h3>
+        <div class="status-chip" id="configText"><span class="dot"></span><span>读取中...</span></div>
+        <div class="admin-actions"><button class="btn" id="diagnoseBtn">检查问题</button><button class="btn" id="copyDiagBtn">复制诊断</button><button class="btn" id="copyErrorBtn">复制最近错误</button></div>
+        <div class="diagnostics hidden" id="diagnosticsPanel"></div>
+        <details class="raw"><summary>原始响应</summary><pre id="raw">{}</pre></details>
       </div>
-    </details>
-
-    <details class="drawer-card" id="maintenanceSettings">
-      <summary>维护工具<span>软件更新和问题诊断</span></summary>
-      <div class="drawer-details">
-      <div class="admin-actions">
-        <button class="btn primary wide" id="updateBtn">检查更新</button>
-        <button class="btn wide hidden" id="rollbackBtn">恢复上一版本</button>
-        <button class="btn" id="diagnoseBtn">诊断</button>
-        <button class="btn" id="copyDiagBtn">复制诊断</button>
-        <button class="btn wide" id="copyErrorBtn">复制最近错误</button>
-      </div>
-      <div class="status-chip" id="configText"><span class="dot"></span><span>加载中...</span></div>
-      <div class="version-line"><span>当前版本 <b id="drawerVersion">%%APP_VERSION%%</b></span></div>
-      <div class="update-card hidden" id="updatePanel"></div>
-      <div class="diagnostics hidden" id="diagnosticsPanel"></div>
-      <details class="raw"><summary>原始响应</summary><pre id="raw">{}</pre></details>
-      </div>
-    </details>
+    </section>
   </div>
+  <div class="settings-footer"><span id="settingsSaveStatus" role="status">图片参数自动保留</span><button class="btn primary" id="saveConfigBtn">保存设置</button></div>
 </aside>
+
+<section class="image-viewer hidden" id="imageViewer" role="dialog" aria-modal="true" aria-labelledby="viewerTitle" tabindex="-1" inert>
+  <div class="viewer-panel">
+    <header class="viewer-head"><strong id="viewerTitle">图片预览</strong><span class="viewer-counter" id="viewerCounter" aria-live="polite"></span><button class="icon-btn" id="viewerCloseBtn" title="关闭预览" aria-label="关闭预览"><svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg></button></header>
+    <div class="viewer-stage" id="viewerStage" tabindex="0" aria-label="图片预览区域">
+      <div class="viewer-canvas" id="viewerCanvas"></div>
+      <div class="viewer-status" id="viewerStatus" role="status"></div>
+    </div>
+    <footer class="viewer-foot">
+      <div class="viewer-navigation" id="viewerNavigation"><button class="icon-btn" id="viewerPrevBtn" aria-label="上一张" title="上一张"><svg class="icon previous-icon" aria-hidden="true"><use href="#i-up"></use></svg></button><button class="icon-btn" id="viewerNextBtn" aria-label="下一张" title="下一张"><svg class="icon next-icon" aria-hidden="true"><use href="#i-up"></use></svg></button></div>
+      <div class="viewer-zoom" role="group" aria-label="图片缩放"><button id="viewerFitBtn" aria-pressed="true">适应窗口</button><button id="viewerOriginalBtn" aria-pressed="false">原尺寸</button></div>
+      <span class="viewer-dimensions" id="viewerDimensions"></span>
+      <div class="viewer-actions"><button class="btn" id="viewerDownloadBtn"><svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>下载</button><button class="btn primary" id="viewerEditBtn"><svg class="icon" aria-hidden="true"><use href="#i-edit"></use></svg>继续修改</button></div>
+    </footer>
+  </div>
+</section>
 
 <script>
 const qs = id => document.getElementById(id);
@@ -1262,8 +595,90 @@ const state = {
   requestBatches: {},
   editContext: null,
   requestStates: {},
+  historyLimit: 50,
+  historyTotal: 0,
+  historyHasMore: false,
+  historyLoading: false,
+  selectedHistoryId: "",
+  configLoaded: false,
+  operationBusy: false,
+  customModel: false,
+  settingsTab: "image",
+  focusReturn: {},
+  viewer: null,
   nextBatchId: 1
 };
+
+const MODEL_PRESETS = ["gpt-image-2.6-flare", "gpt-image-2.6-sunburst", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2"];
+const DRAFT_KEY = "imagebot-draft-v2";
+const THEME_KEY = "imagebot-theme";
+const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+function readLocal(key) { try { return localStorage.getItem(key); } catch { return null; } }
+function writeLocal(key, value) { try { localStorage.setItem(key, value); } catch {} }
+function icon(name) { return `<svg class="icon" aria-hidden="true"><use href="#i-${name}"></use></svg>`; }
+
+function applyTheme(value) {
+  const theme = ["light", "dark", "system"].includes(value) ? value : "light";
+  document.documentElement.dataset.theme = theme === "system" ? (systemTheme.matches ? "dark" : "light") : theme;
+  for (const input of document.querySelectorAll('input[name="theme"]')) input.checked = input.value === theme;
+  writeLocal(THEME_KEY, theme);
+}
+applyTheme(readLocal(THEME_KEY) || "light");
+systemTheme.addEventListener("change", () => { if (readLocal(THEME_KEY) === "system") applyTheme("system"); });
+
+function configDirty() {
+  const cfg = state.config;
+  if (!cfg) return false;
+  return Boolean(qs("apiKey").value.trim()) || qs("baseUrl").value.trim() !== cfg.base_url ||
+    qs("model").value.trim() !== cfg.model || (qs("mockMode").value === "1") !== Boolean(cfg.mock) ||
+    Number(qs("timeoutSecInput").value) !== Number(cfg.timeout_sec || 240) ||
+    qs("requestMode").value !== (cfg.request_mode || "auto");
+}
+
+function saveDraft() {
+  if (!state.configLoaded) return;
+  writeLocal(DRAFT_KEY, JSON.stringify({ prompt: qs("promptInput").value, model: qs("model").value.trim(), options: optionPayload(), references: state.files.length }));
+}
+
+function restoreDraft() {
+  try {
+    const draft = JSON.parse(readLocal(DRAFT_KEY) || "null");
+    if (!draft || typeof draft !== "object") return;
+    if (typeof draft.prompt === "string") qs("promptInput").value = draft.prompt;
+    restoreRequestOptions(draft.options || {}, draft.model || "");
+    autoSizePrompt();
+    if (draft.prompt || draft.references) showToast(draft.references ? "文字草稿已恢复，参考图片需要重新添加。" : "已恢复上次的文字草稿。");
+  } catch {}
+}
+
+function restoreRequestOptions(options, model) {
+  if (model) qs("model").value = model;
+  for (const [key, id] of Object.entries({ size: "sizeInput", n: "countInput", quality: "qualityInput", background: "backgroundInput", output_format: "outputFormatInput", complexity: "complexityInput" })) {
+    if (options[key] !== undefined) {
+      const value = String(options[key] ?? "");
+      if (id === "countInput" && !Array.from(qs(id).options).some(option => option.value === value)) {
+        if (/^[1-9]\d?$/.test(value)) qs(id).add(new Option(`${value} 张`, value));
+      }
+      qs(id).value = value;
+    } else if (key === "complexity") qs(id).value = "";
+  }
+  syncModelPreset(qs("model").value.trim());
+  renderOptionSummary();
+  renderConfig();
+}
+
+async function runAction(ids, action, label = "") {
+  if (state.operationBusy || state.busy) return;
+  state.operationBusy = true;
+  const buttons = ids.map(qs);
+  const before = buttons.map(button => ({ html: button.innerHTML, disabled: button.disabled }));
+  buttons.forEach(button => { button.disabled = true; button.setAttribute("aria-busy", "true"); if (label) button.textContent = label; });
+  try { await action(); } catch (error) { showToast(error.message || String(error)); }
+  finally {
+    state.operationBusy = false;
+    buttons.forEach((button, index) => { button.disabled = before[index].disabled; button.removeAttribute("aria-busy"); if (label) button.innerHTML = before[index].html; });
+  }
+}
 
 const messages = qs("messages");
 const hero = qs("hero");
@@ -1320,16 +735,19 @@ function setProgress(value) {
 
 function setBusy(value) {
   state.busy = value;
-  for (const el of [qs("sendBtn"), qs("uploadBtn"), qs("promptInput")]) {
+  for (const el of document.querySelectorAll('#composer button, #composer select, #composer textarea, #drawer input, #drawer select, #drawer button:not(.settings-tab):not(#closeDrawerBtn), #newChatBtn, .history-open, .history-delete, #sideUpdateBtn')) {
     el.disabled = value;
   }
-  qs("sendBtn").textContent = value ? "生成中" : "生成";
+  qs("stopBtn").disabled = false;
+  for (const input of document.querySelectorAll('input[name="theme"]')) input.disabled = false;
+  qs("sendBtn").innerHTML = value ? '<span class="spinner"></span><span>生成中</span>' : `<span>生成</span>${icon("up")}`;
+  composer.setAttribute("aria-busy", String(value));
   qs("generationStatus").classList.toggle("hidden", !value);
   renderConfig();
 }
 
 function scrollBottom() {
-  workspace.scrollTo({ top: workspace.scrollHeight, behavior: "smooth" });
+  workspace.scrollTo({ top: workspace.scrollHeight, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
 }
 
 function humanError(message) {
@@ -1380,13 +798,18 @@ function applyWizardToSettings(mock = false) {
   qs("apiKey").value = qs("wizardApiKey").value.trim();
   qs("model").value = qs("wizardModel").value.trim();
   qs("mockMode").value = mock ? "1" : "0";
+  syncModelPreset(qs("model").value);
+  renderOptionSummary();
   renderConfig();
 }
 
 function openWizard(force = false) {
   if (!force && state.wizardDismissed) return;
+  if (!qs("setupWizard").classList.contains("hidden")) return;
   syncWizardFromSettings();
+  state.focusReturn.wizard = document.activeElement;
   qs("setupWizard").classList.remove("hidden");
+  updateScrim();
   setTimeout(() => {
     const target = qs("wizardApiKey").value.trim() ? qs("wizardSaveBtn") : qs("wizardApiKey");
     target.focus();
@@ -1394,21 +817,26 @@ function openWizard(force = false) {
 }
 
 function closeWizard() {
+  if (qs("setupWizard").classList.contains("hidden")) return;
   state.wizardDismissed = true;
   qs("setupWizard").classList.add("hidden");
+  updateScrim();
+  restoreFocus("wizard");
 }
 
 async function wizardSave(mock = false) {
-  applyWizardToSettings(mock);
-  if (!mock && !qs("apiKey").value.trim()) {
+  if (!mock && !qs("wizardApiKey").value.trim() && !(state.config && state.config.has_api_key)) {
     showToast("请先填写接口密钥，或者点击“先试用演示模式”。");
     qs("wizardApiKey").focus();
     return;
   }
+  applyWizardToSettings(mock);
   try {
     qs("wizardSaveBtn").textContent = "保存中";
     await saveConfig(true);
     closeWizard();
+    qs("wizardApiKey").value = "";
+    qs("promptInput").focus();
     showToast(mock ? "演示模式已开启，可以先体验界面。" : "配置已保存，可以开始生成。");
   } catch {} finally {
     qs("wizardSaveBtn").textContent = "保存并开始";
@@ -1421,7 +849,8 @@ function optionPayload() {
     n: Number(qs("countInput").value || 1),
     quality: qs("qualityInput").value,
     background: qs("backgroundInput").value,
-    output_format: qs("outputFormatInput").value
+    output_format: qs("outputFormatInput").value,
+    complexity: modelCapabilities().supports_complexity ? qs("complexityInput").value : ""
   });
 }
 
@@ -1437,38 +866,54 @@ function qualityLabel(value) {
   return ({ high: "高", medium: "标准", low: "快速", auto: "自动", xhigh: "极高", max: "最高", "": "默认" })[value] || value;
 }
 
-function isGptImage25(model = qs("model").value) {
-  return /^gpt-image-2\.5-(flare|sunburst)(-\d{4}-\d{2}-\d{2})?$/.test(String(model || "").trim());
+function modelCapabilities(model = qs("model").value) {
+  const name = String(model || "").trim().toLowerCase();
+  const configured = state.config && state.config.model_capabilities && state.config.model_capabilities[name];
+  if (configured) return configured;
+  const complexity = /^gpt-image-2\.6-(flare|sunburst)$/.test(name);
+  const modern = complexity || /^gpt-image-2\.5-(flare|sunburst)(-\d{4}-\d{2}-\d{2})?$/.test(name);
+  const known = modern || /^gpt-image-2(-\d{4}-\d{2}-\d{2})?$/.test(name) || /^gpt-image-1(\.5|-mini)?(-\d{4}-\d{2}-\d{2})?$/.test(name);
+  return {
+    known,
+    qualities: modern || !known ? ["auto", "low", "medium", "high", "xhigh", "max"] : ["auto", "low", "medium", "high"],
+    supports_complexity: complexity,
+    complexities: complexity ? ["low", "medium", "high"] : [],
+    default_complexity: complexity ? "high" : "",
+    output_formats: ["png", "jpeg", "webp"],
+    size_constraints: modern || /^gpt-image-2(-\d{4}-\d{2}-\d{2})?$/.test(name) ? { multiple_of: 16, max_side: 3840, max_ratio: 3, min_pixels: 655360, max_pixels: 8294400 } : null
+  };
 }
 
 function renderModelCapabilities() {
-  const supportsExtendedQuality = isGptImage25();
-  for (const value of ["xhigh", "max"]) {
-    const option = qs("qualityInput").querySelector(`option[value="${value}"]`);
-    option.disabled = !supportsExtendedQuality;
+  const caps = modelCapabilities();
+  for (const option of qs("qualityInput").options) {
+    option.disabled = caps.known && !caps.qualities.includes(option.value);
   }
-  if (!supportsExtendedQuality && ["xhigh", "max"].includes(qs("qualityInput").value)) {
+  if (caps.known && !caps.qualities.includes(qs("qualityInput").value)) {
     qs("qualityInput").value = "high";
   }
+  qs("complexityField").classList.toggle("hidden", !caps.supports_complexity);
+  qs("complexityInput").disabled = !caps.supports_complexity || state.busy;
+  if (!caps.supports_complexity) qs("complexityInput").value = "";
+  for (const option of qs("complexityInput").options) {
+    option.disabled = Boolean(option.value && !(caps.complexities || []).includes(option.value));
+  }
   const model = qs("model").value.trim();
-  qs("modelHelp").textContent = /sunburst/i.test(model)
-    ? "Sunburst：适合精细编辑、保留参考图细节。"
-    : /flare/i.test(model)
-      ? "Flare：适合日常生图，速度更快。"
-      : "自定义模型：能力和参数以接口服务商支持为准。";
+  qs("modelHelp").textContent = caps.supports_complexity ? "Image 2.6 · 支持画面复杂度" : caps.known ? "使用所选模型生成或编辑图片" : "可用参数以你的接口服务商为准";
 }
 
 function validateImageSize(model, size) {
   const value = String(size || "").trim().toLowerCase();
-  if (!isGptImage25(model) || value === "auto") return;
+  const limits = modelCapabilities(model).size_constraints;
+  if (!limits || value === "auto") return;
   const match = value.match(/^(\d{2,4})x(\d{2,4})$/);
   if (!match) throw new Error("尺寸请填写宽x高，例如 1536x864；也可以填写 auto。");
   const width = Number(match[1]);
   const height = Number(match[2]);
   const pixels = width * height;
   const ratio = Math.max(width, height) / Math.min(width, height);
-  if (width % 16 || height % 16 || Math.max(width, height) > 3840 || ratio > 3 || pixels < 655360 || pixels > 8294400) {
-    throw new Error("GPT Image 2.5 尺寸要求：宽高为 16 的倍数，最长边不超过 3840，比例不超过 3:1，总像素为 655360 至 8294400。");
+  if (width % limits.multiple_of || height % limits.multiple_of || Math.max(width, height) > limits.max_side || ratio > limits.max_ratio || pixels < limits.min_pixels || pixels > limits.max_pixels) {
+    throw new Error(`图片尺寸要求：宽高为 ${limits.multiple_of} 的倍数，最长边不超过 ${limits.max_side}，比例不超过 ${limits.max_ratio}:1，总像素为 ${limits.min_pixels} 至 ${limits.max_pixels}。`);
   }
 }
 
@@ -1500,21 +945,19 @@ function confirmGenerationCost(request) {
 }
 
 function renderOptionSummary() {
+  renderModelCapabilities();
   const count = Number(qs("countInput").value || 1);
   qs("composerConfigSummary").textContent = `${count} 张 · ${qualityLabel(qs("qualityInput").value)}`;
   for (const button of document.querySelectorAll(".size-preset")) {
     button.classList.toggle("active", button.dataset.size === qs("sizeInput").value.trim());
+    button.setAttribute("aria-pressed", String(button.dataset.size === qs("sizeInput").value.trim()));
   }
-  renderModelCapabilities();
+  qs("composerConfigSummary").title = `${qs("sizeInput").value} · ${count} 张 · ${qualityLabel(qs("qualityInput").value)}`;
 }
 
 function applyHistoryOptions(item) {
   if (!item) return;
-  if (item.model) qs("model").value = item.model;
-  if (item.size) qs("sizeInput").value = item.size;
-  if (item.quality !== undefined) qs("qualityInput").value = item.quality || "";
-  if (item.background !== undefined) qs("backgroundInput").value = item.background || "";
-  if (item.output_format !== undefined) qs("outputFormatInput").value = item.output_format || "";
+  restoreRequestOptions({ size: item.size || "1024x1024", n: item.requested_count || item.image_count || 1, quality: item.quality || "auto", background: item.background || "", output_format: item.output_format || "", complexity: item.complexity || "" }, item.model);
   if (item.request_mode) qs("requestMode").value = item.request_mode;
   if (item.model) syncModelPreset(item.model);
   renderOptionSummary();
@@ -1524,10 +967,22 @@ function applyHistoryOptions(item) {
 function syncModelPreset(model) {
   const select = qs("modelPreset");
   select.value = Array.from(select.options).some(option => option.value === model) ? model : "";
+  state.customModel = !select.value;
+  qs("customModelField").classList.toggle("hidden", !state.customModel);
+  renderQuickModel(model);
+}
+
+function renderQuickModel(model = qs("model").value.trim()) {
+  const presets = Array.from(qs("modelPreset").options).map(option => option.value).filter(Boolean);
+  if (model && !presets.includes(model)) presets.unshift(model);
+  qs("quickModel").innerHTML = presets.map(value => `<option value="${attr(value)}">${esc(modelPresetLabel(value))}</option>`).join("") + '<option value="__custom__">自定义模型...</option>';
+  qs("quickModel").value = model;
 }
 
 function modelPresetLabel(model) {
   const labels = {
+    "gpt-image-2.6-flare": "Image 2.6 Flare",
+    "gpt-image-2.6-sunburst": "Image 2.6 Sunburst",
     "gpt-image-2.5-flare": "GPT Image 2.5 Flare · 日常生图",
     "gpt-image-2.5-flare-2026-09-08": "GPT Image 2.5 Flare · 固定版本",
     "gpt-image-2.5-sunburst": "GPT Image 2.5 Sunburst · 精细编辑",
@@ -1571,26 +1026,30 @@ function validateFiles(files) {
 }
 
 function appendFiles(files) {
+  if (state.busy) return;
   const incoming = validateFiles(files);
   if (!incoming.length) return;
   const existing = new Set(state.files.map(item => fileKey(item.file)));
+  const unique = incoming.filter(file => !existing.has(fileKey(file)));
+  if (state.files.length + unique.length > 16) throw new Error("参考图最多 16 张。");
   for (const file of incoming) {
     if (existing.has(fileKey(file))) continue;
-    if (state.files.length >= 16) throw new Error("参考图最多 16 张。");
+    existing.add(fileKey(file));
     state.files.push({ file, url: URL.createObjectURL(file), id: Math.random().toString(36).slice(2) });
   }
   renderFiles();
+  saveDraft();
 }
 
 function renderFiles() {
   const context = state.editContext
-    ? `<span class="file-pill"><span>修改第 ${Number(state.editContext.revision || 1) + 1} 版 · 参考图已载入</span><button type="button" onclick="clearEditContext()" title="取消版本关联">x</button></span>`
+    ? `<span class="file-pill"><span>修改第 ${Number(state.editContext.revision || 1) + 1} 版</span><button type="button" onclick="clearEditContext()" title="取消版本关联" aria-label="取消版本关联">${icon("x")}</button></span>`
     : "";
   qs("fileStrip").innerHTML = context + state.files.map((item, index) => `
     <span class="file-pill">
       <img src="${attr(item.url)}" alt="">
       <span title="${attr(item.file.name)}">${esc(item.file.name)}</span>
-      <button type="button" onclick="removeFile(${index})" title="移除">x</button>
+      <button type="button" onclick="removeFile(${index})" title="移除参考图" aria-label="移除 ${attr(item.file.name)}">${icon("x")}</button>
     </span>
   `).join("");
   qs("modeHint").textContent = state.files.length
@@ -1607,10 +1066,12 @@ function clearSelectedFiles(preserveUrls = false) {
 }
 
 window.removeFile = index => {
+  if (state.busy) return;
   const item = state.files[index];
   if (item) URL.revokeObjectURL(item.url);
   state.files.splice(index, 1);
   renderFiles();
+  saveDraft();
 };
 
 function fileToDataURL(file) {
@@ -1708,19 +1169,19 @@ function imageResult(images, meta = {}) {
   const actions = images.length > 1 ? `<button class="small-btn" onclick="downloadAllImages('${batchId}')">下载全部</button>` : "";
   return `
     <div class="result-head">
-      <div><strong>${title}</strong><br><span>共 ${images.length} 张，点击图片下方按钮可下载或打开。</span></div>
+      <div><strong>${title}</strong><br><span>${images.length} 张图片</span></div>
       <div class="result-tools">${actions}</div>
     </div>
     <div class="image-grid">
       ${images.map((item, index) => {
         const src = item.local_url || item.src || "";
         return `<div class="image-card">
-          <img src="${attr(src)}" alt="生成结果 ${index + 1}">
+          <button class="image-preview" onclick="openImageViewer('${batchId}',${index},this)" aria-label="查看生成图片 ${index + 1}"><img src="${attr(src)}" alt="生成结果 ${index + 1}" loading="lazy" onload="scrollBottom()"></button>
           <div class="image-actions">
-            <button onclick="downloadImage('${batchId}',${index})">下载</button>
-            <button onclick="editResultImage('${batchId}',${index})">继续修改</button>
-            <a href="${attr(src)}" target="_blank" rel="noreferrer">查看大图</a>
-            <button onclick="reuseCurrentPrompt('${batchId}')">再次生成</button>
+            <button onclick="downloadImage('${batchId}',${index})">${icon("download")}下载</button>
+            <button onclick="runActionForImage(this, '${batchId}', ${index})">${icon("edit")}继续修改</button>
+            <button onclick="openImageViewer('${batchId}',${index},this)">${icon("expand")}查看大图</button>
+            <button onclick="reuseCurrentPrompt('${batchId}')">${icon("refresh")}再次生成</button>
           </div>
         </div>`;
       }).join("")}
@@ -1732,11 +1193,11 @@ function imageResult(images, meta = {}) {
 
 function loadingHtml(filesCount) {
   const mode = filesCount ? `正在参考 ${filesCount} 张图片生成` : "正在生成图片";
-  return `<span class="typing"><span class="spinner"></span>${mode}，通常需要几十秒。你可以在输入框下方查看等待时间。</span>`;
+  return `<span class="typing" role="status"><span class="spinner"></span>${mode}...</span>`;
 }
 
 function canOfferBasicRetry(message) {
-  return /unsupported|unknown|unrecognized|invalid/i.test(String(message || "")) && /parameter|field|quality|background|format|compression/i.test(String(message || ""));
+  return /unsupported|unknown|unrecognized|invalid/i.test(String(message || "")) && /parameter|field|quality|complexity|background|format|compression/i.test(String(message || ""));
 }
 
 function unknownRequestHtml(request) {
@@ -1778,7 +1239,7 @@ function captureRequest() {
 }
 
 async function submitRequest(request, fromRetry = false) {
-  if (state.busy) return;
+  if (state.busy || state.operationBusy) return;
   validateImageSize(request.common.model, request.options.size);
   if (!fromRetry && !confirmGenerationCost(request)) return;
   request.userAborted = false;
@@ -1826,6 +1287,8 @@ async function submitRequest(request, fromRetry = false) {
       renderFiles();
       qs("promptInput").placeholder = "描述想生成或修改的图片";
     }
+    saveDraft();
+    if (!activeModal()) qs("promptInput").focus({ preventScroll: true });
     await loadHistory();
     const savedRecord = state.historyItems.find(item => item && item.request_id === request.requestId);
     if (savedRecord) updateMessage(assistantMessage, imageResult(body.images, { request, historyItem: savedRecord, replayed: body.replayed }));
@@ -1899,17 +1362,21 @@ window.stopGeneration = () => {
 };
 
 window.reuseCurrentPrompt = batchId => {
+  if (state.busy) return;
   const request = state.requestBatches[batchId] || state.lastRequest;
   if (!request) return;
+  if (!confirmDraftReplacement()) return;
+  clearSelectedFiles();
+  state.editContext = null;
   qs("promptInput").value = request.prompt || "";
-  if (request.options) {
-    if (request.options.size) qs("sizeInput").value = request.options.size;
-    if (request.options.n) qs("countInput").value = String(request.options.n);
-    if (request.options.quality !== undefined) qs("qualityInput").value = request.options.quality || "";
-    if (request.options.background !== undefined) qs("backgroundInput").value = request.options.background || "";
-    if (request.options.output_format !== undefined) qs("outputFormatInput").value = request.options.output_format || "";
-    renderOptionSummary();
+  restoreRequestOptions(request.options || {}, request.common && request.common.model);
+  if (request.common && request.common.request_mode) qs("requestMode").value = request.common.request_mode;
+  if (request.files && request.files.length) {
+    for (const item of request.files) state.files.push({ file: item.file, url: URL.createObjectURL(item.file), id: `reuse-${Math.random()}` });
   }
+  renderFiles();
+  renderConfig();
+  saveDraft();
   autoSizePrompt();
   qs("promptInput").focus();
 };
@@ -1969,32 +1436,33 @@ function renderConfig() {
   const cfg = state.config;
   if (!cfg) return;
   const tempKey = qs("apiKey").value.trim();
-  const mock = qs("mockMode").value === "1" || cfg.mock;
+  const mock = qs("mockMode").value === "1";
   const hasKey = Boolean(cfg.has_api_key || tempKey || mock);
-  const persistedReady = Boolean(cfg.has_api_key || cfg.mock);
-  const statusText = state.busy ? "正在生成" : mock ? "演示模式" : hasKey ? "接口已配置" : "接口未配置";
+  const dirty = configDirty();
+  const statusText = state.busy ? "正在生成" : mock ? "演示模式" : hasKey ? (dirty ? "配置未保存" : "接口已配置") : "待配置";
   const dotClass = state.busy ? "warn" : mock ? "warn" : hasKey ? "" : "bad";
   const base = qs("baseUrl").value || cfg.base_url || "";
   const model = qs("model").value || cfg.model || "";
   qs("keyStatus").innerHTML = `<span class="dot ${dotClass}"></span><span>${statusText}</span>`;
   qs("topStatus").innerHTML = `<span class="dot ${dotClass}"></span><span>${statusText}</span>`;
   qs("baseStatus").innerHTML = `<span class="dot"></span><span>${esc(base)}</span>`;
-  qs("modelLabel").textContent = model;
-  qs("configText").innerHTML = `<span class="dot ${dotClass}"></span><span>${mock ? "演示模式" : "真实请求"} · 超时 ${state.timeoutSec}s · ${hasKey ? "接口可用" : "缺少密钥"}</span>`;
+  qs("modelLabel").textContent = modelPresetLabel(model);
+  qs("configText").innerHTML = `<span class="dot ${dotClass}"></span><span>${mock ? "演示模式" : "真实生成"} · 等待 ${state.timeoutSec} 秒 · ${hasKey ? "已配置" : "缺少密钥"}</span>`;
   qs("connectionStatus").className = `connection-status ${hasKey ? "ok" : ""}`;
   qs("connectionStatus").textContent = mock
-    ? "演示模式已开启，不会调用真实接口，也不会消耗额度。"
+    ? "当前使用演示模式，不消耗接口额度。"
     : hasKey
-      ? `接口配置已保存。建议修改后点击“测试连接”。`
+      ? (dirty ? "配置有未保存的修改。" : "接口已配置，尚未测试连接。")
       : "还没有接口密钥，请填写后保存并测试连接。";
   qs("setupNotice").classList.toggle("hidden", hasKey);
-  if (!hasKey) openWizard();
-  if (persistedReady && !qs("setupWizard").classList.contains("hidden")) closeWizard();
+  qs("settingsSaveStatus").textContent = dirty ? "连接或模型有未保存的修改" : "图片参数自动保留";
+  qs("saveConfigBtn").title = "保存接口、模型和等待设置";
 }
 
 async function loadConfig() {
   try {
     const response = await fetch("/api/config");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const cfg = await response.json();
     state.config = cfg;
     state.maxUploadMb = cfg.max_upload_mb || 50;
@@ -2003,14 +1471,19 @@ async function loadConfig() {
     qs("model").value = cfg.model || qs("model").value;
     qs("timeoutSecInput").value = state.timeoutSec;
     qs("mockMode").value = cfg.mock ? "1" : "0";
-    const presets = arr(cfg.model_presets);
+    const presets = [...new Set([...MODEL_PRESETS.slice(0, 2), ...arr(cfg.model_presets), ...MODEL_PRESETS])];
     qs("modelPreset").innerHTML = `<option value="">自定义模型</option>${presets.map(item => `<option value="${attr(item)}">${esc(modelPresetLabel(item))}</option>`).join("")}`;
-    qs("modelPreset").value = presets.includes(cfg.model) ? cfg.model : "";
+    syncModelPreset(qs("model").value);
     qs("requestMode").value = cfg.request_mode || "auto";
     renderConfig();
     renderOptionSummary();
+    state.configLoaded = true;
+    restoreDraft();
+    if (!cfg.has_api_key && !cfg.mock) openWizard();
   } catch {
-    showToast("配置读取失败");
+    qs("topStatus").innerHTML = '<span class="dot bad"></span><span>连接中断</span>';
+    qs("connectionStatus").textContent = "本地服务连接失败，请重新启动 ImageBot 后刷新页面。";
+    showToast("配置读取失败，请检查本地服务后刷新页面。");
   }
 }
 
@@ -2022,35 +1495,61 @@ function statusText(item) {
   return item.status || "未知";
 }
 
-async function loadHistory() {
-  try {
-    const response = await fetch("/api/history?limit=50");
-    const body = await response.json();
-    const items = arr(body.items);
-    state.historyItems = items;
-    qs("historyCount").textContent = String(items.length);
-    qs("historyList").innerHTML = items.length ? items.map((item, index) => {
-      const imgs = arr(item.images).filter(x => x && (x.local_url || x.src)).slice(0, 4);
-      const thumbs = imgs.length
-        ? imgs.map(img => `<img src="${attr(img.local_url || img.src)}" alt="">`).join("")
-        : `<div class="thumb-empty"></div>`;
-      return `<div class="history-item" role="button" tabindex="0" onclick="openHistory(${index})" onkeydown="historyKey(event,${index})">
-        <div class="thumbs">${thumbs}</div>
-        <div class="history-copy"><strong>${Number(item.revision || 1) > 1 ? `第 ${Number(item.revision)} 版 · ` : ""}${esc(item.prompt || "无提示词")}</strong><small>${esc(item.time || "")} · ${esc(statusText(item))}</small></div>
-        <button class="history-delete" onclick="deleteHistory(event,${index})" title="删除这条">x</button>
-      </div>`;
-    }).join("") : `<div class="empty-history">暂无历史。生成完成后，会自动出现在这里。</div>`;
-  } catch {
-    qs("historyList").innerHTML = `<div class="empty-history">历史记录读取失败。</div>`;
-  }
+function historyIdentity(item) { return String(item.request_id || item.id || `${item.time}|${item.prompt}`); }
+
+function renderHistory() {
+  const query = qs("historySearch").value.trim().toLocaleLowerCase();
+  const filtered = state.historyItems.map((item, index) => ({ item, index })).filter(({ item }) =>
+    !query || [item.prompt, item.model, item.time, statusText(item)].some(value => String(value || "").toLocaleLowerCase().includes(query)));
+  qs("historyCount").textContent = query ? String(filtered.length) : String(state.historyTotal || state.historyItems.length);
+  qs("historyList").innerHTML = filtered.length ? filtered.map(({ item, index }) => {
+    const image = arr(item.images).find(image => image && (image.local_url || image.src));
+    const thumb = image ? `<img src="${attr(image.local_url || image.src)}" alt="" loading="lazy">` : `<span class="thumb-empty">${icon("image")}</span>`;
+    const selected = state.selectedHistoryId === historyIdentity(item);
+    return `<div class="history-item${selected ? " selected" : ""}">
+      <button class="history-open" onclick="openHistory(${index})" ${state.busy ? "disabled" : ""} ${selected ? 'aria-current="true"' : ""} title="${attr(item.prompt || "无提示词")}">
+        <span class="thumbs">${thumb}</span><span class="history-copy"><strong>${Number(item.revision || 1) > 1 ? `第 ${Number(item.revision)} 版 · ` : ""}${esc(item.prompt || "无提示词")}</strong><small>${esc(item.time || "")} · ${esc(statusText(item))}</small></span>
+      </button>
+      <button class="history-delete" onclick="deleteHistory(event,${index})" ${state.busy ? "disabled" : ""} title="删除记录" aria-label="删除记录：${attr(item.prompt || "无提示词")}">${icon("trash")}</button>
+    </div>`;
+  }).join("") : `<div class="empty-history">${query ? "没有找到匹配的记录" : "还没有生成记录"}</div>`;
+  qs("loadMoreHistoryBtn").classList.toggle("hidden", !state.historyHasMore || state.historyLimit >= 1000);
+  qs("loadMoreHistoryBtn").disabled = state.historyLoading;
+  qs("loadMoreHistoryBtn").textContent = state.historyLoading ? "加载中..." : "加载更多";
+  const limited = state.historyHasMore;
+  qs("historyNote").classList.toggle("hidden", !limited && !query);
+  qs("historyNote").textContent = limited
+    ? `已加载最近 ${state.historyItems.length} 条${state.historyTotal ? `，共 ${state.historyTotal} 条` : ""}${query ? "；搜索仅包含已加载记录" : ""}`
+    : query ? `已搜索全部 ${state.historyItems.length} 条记录` : "";
 }
 
-window.historyKey = (event, index) => {
-  if (event.key === "Enter" || event.key === " ") {
-    event.preventDefault();
-    openHistory(index);
+async function loadHistory(limit = state.historyLimit) {
+  if (state.historyLoading) return;
+  let loaded = false;
+  state.historyLimit = Math.min(1000, Math.max(50, Number(limit) || 50));
+  state.historyLoading = true;
+  qs("loadMoreHistoryBtn").disabled = true;
+  qs("loadMoreHistoryBtn").textContent = "加载中...";
+  try {
+    const response = await fetch(`/api/history?limit=${state.historyLimit}`, { cache: "no-store" });
+    const body = await response.json();
+    if (!response.ok || body.error) throw new Error("历史记录读取失败");
+    state.historyItems = arr(body.items);
+    state.historyTotal = Number(body.total ?? state.historyItems.length);
+    state.historyHasMore = Boolean(body.has_more ?? state.historyTotal > state.historyItems.length);
+    loaded = true;
+  } catch {
+    showToast("历史记录读取失败，请稍后再试。");
+    if (!state.historyItems.length) qs("historyList").innerHTML = '<div class="empty-history">记录暂时无法读取<button class="btn" onclick="loadHistory()">重新加载</button></div>';
+  } finally {
+    state.historyLoading = false;
+    if (loaded || state.historyItems.length) renderHistory();
+    else if (!qs("historyList").textContent.includes("暂时无法读取")) renderHistory();
+    qs("loadMoreHistoryBtn").disabled = false;
+    qs("loadMoreHistoryBtn").textContent = "加载更多";
   }
-};
+  if (qs("historySearch").value.trim() && state.historyHasMore && state.historyLimit < 1000) await loadHistory(1000);
+}
 
 let openedHistoryPrompt = "";
 let openedHistoryItem = null;
@@ -2072,9 +1571,11 @@ async function restoreHistoryFiles(item) {
 }
 
 window.clearEditContext = () => {
+  if (state.busy) return;
   state.editContext = null;
   clearSelectedFiles();
   qs("promptInput").placeholder = "描述想生成或修改的图片";
+  saveDraft();
 };
 
 function historyVersionNavigation(item) {
@@ -2094,9 +1595,17 @@ window.openHistoryById = requestId => {
 };
 
 window.openHistory = async index => {
+  if (state.busy || state.operationBusy) return;
   const item = state.historyItems[index];
   if (!item) return;
+  if (!confirmDraftReplacement()) return;
+  const selection = historyIdentity(item);
+  state.selectedHistoryId = selection;
+  renderHistory();
   closeSidebar();
+  clearSelectedFiles();
+  qs("promptInput").value = "";
+  autoSizePrompt();
   messages.innerHTML = "";
   hero.classList.add("hidden");
   openedHistoryPrompt = item.prompt || "";
@@ -2104,6 +1613,10 @@ window.openHistory = async index => {
   state.editContext = null;
   applyHistoryOptions(item);
   const savedInputs = await restoreHistoryFiles(item);
+  if (state.selectedHistoryId !== selection) {
+    savedInputs.forEach(file => URL.revokeObjectURL(file.url));
+    return;
+  }
   state.messageUrls.push(...savedInputs.map(file => file.url));
   addMessage("user", `${esc(openedHistoryPrompt)}${attachmentGrid(savedInputs)}<div class="meta">历史记录 · ${esc(item.time || "")} · 第 ${Number(item.revision || 1)} 版</div>`);
   const historyRequest = {
@@ -2118,9 +1631,10 @@ window.openHistory = async index => {
       n: Number(item.requested_count || item.image_count || 1),
       quality: item.quality || "",
       background: item.background || "",
-      output_format: item.output_format || ""
+      output_format: item.output_format || "",
+      complexity: modelCapabilities(item.model).supports_complexity ? item.complexity || "" : ""
     }),
-    common: compact({ model: item.model || "", request_mode: item.request_mode || "auto" })
+    common: compact({ ...commonPayload(), model: item.model || "", request_mode: item.request_mode || "auto" })
   };
   const images = arr(item.images);
   if (item.status === "success" && images.length) {
@@ -2141,32 +1655,47 @@ window.openHistory = async index => {
   } else {
     addMessage("assistant", `<div class="error-card"><b>没有可显示的结果</b><pre>${esc(item.error || "这条历史没有保存图片。")}</pre><button class="small-btn" onclick="reusePromptFromOpenHistory()">重新填写</button></div>`);
   }
+  saveDraft();
 };
 
 window.reusePromptFromOpenHistory = () => {
+  if (state.busy || !confirmDraftReplacement()) return;
   applyHistoryOptions(openedHistoryItem);
   qs("promptInput").value = openedHistoryPrompt || "";
   autoSizePrompt();
   qs("promptInput").focus();
+  saveDraft();
   scrollBottom();
 };
 
 async function saveConfig(throwOnError = false) {
   try {
+    const timeout = qs("timeoutSecInput");
+    if (!timeout.checkValidity() || !Number(timeout.value)) {
+      selectSettingsTab("connection");
+      timeout.reportValidity();
+      throw new Error("等待上限请填写 10 至 1800 秒。");
+    }
     qs("saveConfigBtn").textContent = "保存中";
     qs("saveConfigBtn").disabled = true;
     const body = await requestJSON("/api/config/save", configPayload());
     state.config = body.config;
     state.timeoutSec = body.config.timeout_sec || state.timeoutSec;
+    qs("baseUrl").value = body.config.base_url || qs("baseUrl").value;
+    qs("model").value = body.config.model || qs("model").value;
+    qs("timeoutSecInput").value = state.timeoutSec;
     qs("apiKey").value = "";
     renderConfig();
+    syncModelPreset(qs("model").value);
+    renderOptionSummary();
+    saveDraft();
     showToast("配置已保存");
     return true;
   } catch (error) {
     if (throwOnError) throw error;
     return false;
   } finally {
-    qs("saveConfigBtn").textContent = "保存";
+    qs("saveConfigBtn").textContent = "保存设置";
     qs("saveConfigBtn").disabled = false;
   }
 }
@@ -2327,15 +1856,21 @@ function handleUpdateClick() {
 
 window.deleteHistory = async (event, index) => {
   event.stopPropagation();
+  if (state.busy || state.operationBusy) return;
   const item = state.historyItems[index];
   if (!item || !item.id) return;
   if (!confirm("删除这条历史记录？不会删除图片文件。")) return;
+  const button = event.currentTarget;
+  button.disabled = true;
   try {
     await postSimple("/api/history/delete", { id: item.id });
+    if (state.selectedHistoryId === historyIdentity(item)) state.selectedHistoryId = "";
     await loadHistory();
     showToast("历史已删除");
   } catch (error) {
     showToast(error.message || String(error));
+  } finally {
+    button.disabled = false;
   }
 };
 
@@ -2367,6 +1902,7 @@ async function loadStorage() {
 }
 
 async function clearStorage(target) {
+  if (state.busy) return;
   const prompts = {
     history: "确认只清空历史记录？已经保存的图片不会删除。",
     images: "确认删除所有已生成图片和历史记录？此操作无法撤销。",
@@ -2450,6 +1986,7 @@ async function normalizeResultBlob(blob, filename) {
 }
 
 window.editResultImage = async (batchId, index) => {
+  if (state.busy || !confirmDraftReplacement()) return;
   const item = arr(state.resultBatches[batchId])[index];
   if (!item) return;
   const src = item.local_url || item.src;
@@ -2461,6 +1998,9 @@ window.editResultImage = async (batchId, index) => {
     const normalized = await normalizeResultBlob(blob, item.filename || "image.png");
     const file = new File([normalized.blob], normalized.filename, { type: normalized.type });
     const request = state.requestBatches[batchId];
+    clearSelectedFiles();
+    state.editContext = null;
+    if (request) restoreRequestOptions(request.options || {}, request.common && request.common.model);
     appendFiles([file]);
     const requestId = request && (request.rootRequestId || request.requestId);
     const parentRequestId = request && request.requestId;
@@ -2478,11 +2018,123 @@ window.editResultImage = async (batchId, index) => {
     }
     autoSizePrompt();
     qs("promptInput").focus();
+    saveDraft();
     showToast("已把这张图片加入参考图，可以继续描述怎么修改。");
+    return true;
   } catch (error) {
     showToast(`无法读取这张图片：${error.message || error}`);
   }
 };
+
+window.runActionForImage = async (button, batchId, index) => {
+  if (state.busy || state.operationBusy) return;
+  state.operationBusy = true;
+  const html = button.innerHTML;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "载入中...";
+  try { await window.editResultImage(batchId, index); }
+  finally { state.operationBusy = false; button.disabled = false; button.removeAttribute("aria-busy"); button.innerHTML = html; }
+};
+
+window.openImageViewer = (batchId, index = 0, trigger = document.activeElement) => {
+  const images = arr(state.resultBatches[batchId]);
+  if (!images[index]) return;
+  if (!state.viewer) state.focusReturn.viewer = trigger;
+  state.viewer = { batchId, index, zoom: "fit", editing: false };
+  qs("imageViewer").classList.remove("hidden");
+  updateScrim();
+  renderViewer();
+  qs("viewerCloseBtn").focus();
+};
+
+function closeImageViewer(restore = true) {
+  if (!state.viewer) return;
+  if (state.viewer.editing) { showToast("正在载入图片，请稍等。"); return; }
+  state.viewer = null;
+  qs("imageViewer").classList.add("hidden");
+  qs("viewerCanvas").replaceChildren();
+  updateScrim();
+  if (restore) restoreFocus("viewer");
+}
+
+function fitViewerImage() {
+  const viewer = state.viewer;
+  const image = qs("viewerCanvas").querySelector("img");
+  if (!viewer || !image) return;
+  const fit = viewer.zoom === "fit";
+  const stage = qs("viewerStage");
+  const rect = stage.getBoundingClientRect();
+  const width = Math.floor(Math.min(stage.clientWidth, rect.width));
+  const height = Math.floor(Math.min(stage.clientHeight, rect.height));
+  image.style.maxWidth = fit ? `${Math.max(1, width - 32)}px` : "none";
+  image.style.maxHeight = fit ? `${Math.max(1, height - 32)}px` : "none";
+  qs("viewerFitBtn").setAttribute("aria-pressed", String(fit));
+  qs("viewerOriginalBtn").setAttribute("aria-pressed", String(!fit));
+}
+
+function renderViewer() {
+  const viewer = state.viewer;
+  if (!viewer) return;
+  const images = arr(state.resultBatches[viewer.batchId]);
+  const item = images[viewer.index];
+  if (!item) { closeImageViewer(); return; }
+  const token = Symbol();
+  viewer.renderToken = token;
+  qs("viewerCounter").textContent = `${viewer.index + 1} / ${images.length}`;
+  qs("viewerDimensions").textContent = "";
+  qs("viewerNavigation").classList.toggle("hidden", images.length <= 1);
+  qs("viewerPrevBtn").disabled = viewer.index === 0;
+  qs("viewerNextBtn").disabled = viewer.index >= images.length - 1;
+  qs("viewerDownloadBtn").disabled = true;
+  qs("viewerEditBtn").disabled = true;
+  qs("viewerStatus").classList.remove("hidden");
+  qs("viewerStatus").innerHTML = '<span class="spinner"></span><span>载入图片中...</span>';
+  qs("viewerStage").setAttribute("aria-busy", "true");
+  const image = new Image();
+  image.alt = `生成图片 ${viewer.index + 1}`;
+  image.className = "hidden";
+  image.onload = () => {
+    if (state.viewer !== viewer || viewer.renderToken !== token) return;
+    image.classList.remove("hidden");
+    qs("viewerStatus").classList.add("hidden");
+    qs("viewerStage").setAttribute("aria-busy", "false");
+    qs("viewerDimensions").textContent = `${image.naturalWidth} × ${image.naturalHeight}`;
+    qs("viewerDownloadBtn").disabled = false;
+    qs("viewerEditBtn").disabled = state.busy || state.operationBusy;
+    fitViewerImage();
+  };
+  image.onerror = () => {
+    if (state.viewer !== viewer || viewer.renderToken !== token) return;
+    qs("viewerStage").setAttribute("aria-busy", "false");
+    qs("viewerStatus").innerHTML = '<span>图片无法载入，文件可能已被删除。</span>';
+    const retry = document.createElement("button");
+    retry.className = "btn";
+    retry.textContent = "重新载入";
+    retry.addEventListener("click", renderViewer);
+    qs("viewerStatus").appendChild(retry);
+  };
+  qs("viewerCanvas").replaceChildren(image);
+  image.src = item.local_url || item.src;
+  fitViewerImage();
+  qs("viewerStage").scrollTo(0, 0);
+}
+
+function moveViewer(direction) {
+  const viewer = state.viewer;
+  if (!viewer || viewer.editing) return;
+  const next = viewer.index + direction;
+  if (next < 0 || next >= arr(state.resultBatches[viewer.batchId]).length) return;
+  viewer.index = next;
+  renderViewer();
+}
+
+function setViewerZoom(zoom) {
+  if (!state.viewer) return;
+  state.viewer.zoom = zoom;
+  fitViewerImage();
+  qs("viewerStage").scrollTo(0, 0);
+}
 
 async function copyText(text) {
   try {
@@ -2506,215 +2158,359 @@ window.copyLastError = async () => {
   showToast("错误已复制");
 };
 
-function openDrawer() {
+function selectSettingsTab(tab, focus = false) {
+  const panels = { image: "advancedSettings", connection: "connectionSettings", data: "storageSettings", updates: "maintenanceSettings" };
+  if (!panels[tab]) tab = "image";
+  state.settingsTab = tab;
+  for (const [name, id] of Object.entries(panels)) {
+    qs(id).classList.toggle("hidden", name !== tab);
+    const button = qs(`tab-${name}`);
+    button.setAttribute("aria-selected", String(name === tab));
+    button.tabIndex = name === tab ? 0 : -1;
+  }
+  qs("drawer").querySelector(".drawer-body").scrollTop = 0;
+  if (focus) qs(`tab-${tab}`).focus();
+}
+
+function activeModal() {
+  if (state.viewer) return qs("imageViewer");
+  if (!qs("setupWizard").classList.contains("hidden")) return qs("setupWizard");
+  if (qs("drawer").classList.contains("open")) return qs("drawer");
+  if (window.matchMedia("(max-width: 760px)").matches && qs("sidebar").classList.contains("open")) return qs("sidebar");
+  return null;
+}
+
+function restoreFocus(name) {
+  const element = state.focusReturn[name];
+  if (element && element.isConnected && !element.closest("[inert]") && element.getClientRects().length) element.focus({ preventScroll: true });
+  else if (!activeModal()) qs("promptInput").focus({ preventScroll: true });
+}
+
+function openDrawer(tab = state.settingsTab) {
+  if (typeof tab !== "string") tab = state.settingsTab;
+  if (!qs("drawer").classList.contains("open")) state.focusReturn.drawer = document.activeElement;
+  closeSidebar(false);
+  selectSettingsTab(tab);
   qs("drawer").classList.add("open");
   qs("drawer").setAttribute("aria-hidden", "false");
-  loadStorage();
-  loadUpdateStatus();
+  qs("drawer").inert = false;
   updateScrim();
+  qs(`tab-${state.settingsTab}`).focus();
+  void loadStorage();
+  void loadUpdateStatus();
 }
 
 function closeDrawer() {
+  if (!qs("drawer").classList.contains("open")) return true;
+  if (state.operationBusy || state.updateBusy) { showToast("正在处理，请稍等。"); return false; }
+  if (configDirty() && !confirm("连接或模型设置尚未保存。先关闭设置吗？本次修改会保留在页面中。")) return false;
   qs("drawer").classList.remove("open");
   qs("drawer").setAttribute("aria-hidden", "true");
+  qs("drawer").inert = true;
+  qs("apiKey").type = "password";
+  qs("toggleKeyBtn").setAttribute("aria-pressed", "false");
+  qs("toggleKeyBtn").setAttribute("aria-label", "显示密钥");
   updateScrim();
+  restoreFocus("drawer");
+  return true;
 }
 
 function openSidebar() {
+  if (qs("drawer").classList.contains("open") && !closeDrawer()) return;
+  state.focusReturn.sidebar = document.activeElement;
   qs("sidebar").classList.add("open");
+  qs("menuBtn").setAttribute("aria-expanded", "true");
   updateScrim();
+  qs("newChatBtn").focus();
 }
 
-function closeSidebar() {
+function closeSidebar(focus = true) {
+  const wasOpen = qs("sidebar").classList.contains("open");
   qs("sidebar").classList.remove("open");
+  qs("menuBtn").setAttribute("aria-expanded", "false");
   updateScrim();
+  if (wasOpen && focus) restoreFocus("sidebar");
 }
 
 function updateScrim() {
-  const sidebarOpen = qs("sidebar").classList.contains("open");
+  const viewerOpen = Boolean(state.viewer);
+  const wizardOpen = !qs("setupWizard").classList.contains("hidden");
   const drawerOpen = qs("drawer").classList.contains("open");
+  const mobile = window.matchMedia("(max-width: 760px)").matches;
+  const sidebarOpen = mobile && qs("sidebar").classList.contains("open");
   qs("scrim").classList.toggle("open", sidebarOpen || drawerOpen);
+  qs("app").inert = wizardOpen || drawerOpen || viewerOpen;
+  document.querySelector(".main").inert = sidebarOpen;
+  qs("sidebar").inert = mobile && !sidebarOpen;
+  qs("drawer").inert = !drawerOpen || wizardOpen || viewerOpen;
+  qs("setupWizard").inert = viewerOpen || !wizardOpen;
+  qs("imageViewer").inert = !viewerOpen;
+  if (sidebarOpen) { qs("sidebar").setAttribute("role", "dialog"); qs("sidebar").setAttribute("aria-modal", "true"); }
+  else { qs("sidebar").removeAttribute("role"); qs("sidebar").removeAttribute("aria-modal"); }
 }
 
 window.openDrawer = openDrawer;
 
+function confirmDraftReplacement() {
+  return (!qs("promptInput").value.trim() && !state.files.length) || confirm("输入框中有尚未生成的内容，确定替换吗？");
+}
+
 function resetChat() {
+  closeImageViewer(false);
   for (const url of state.messageUrls) URL.revokeObjectURL(url);
   state.messageUrls = [];
   messages.innerHTML = "";
   hero.classList.remove("hidden");
   state.currentImages = [];
+  state.resultBatches = {};
+  state.requestBatches = {};
+  state.lastRequest = null;
+  state.editContext = null;
+  state.selectedHistoryId = "";
+  openedHistoryItem = null;
+  openedHistoryPrompt = "";
   qs("promptInput").value = "";
+  qs("promptInput").placeholder = "描述你想要的画面，或上传图片进行修改";
   autoSizePrompt();
   clearSelectedFiles();
+  renderHistory();
+  saveDraft();
 }
 
 function autoSizePrompt() {
   const input = qs("promptInput");
   input.style.height = "auto";
-  input.style.height = `${Math.min(input.scrollHeight, 168)}px`;
+  const max = window.matchMedia("(max-height: 650px)").matches ? 100 : 168;
+  input.style.height = `${Math.min(input.scrollHeight, max)}px`;
 }
 
 qs("sendBtn").addEventListener("click", send);
 qs("stopBtn").addEventListener("click", window.stopGeneration);
-qs("promptInput").addEventListener("input", autoSizePrompt);
+qs("promptInput").addEventListener("input", () => { autoSizePrompt(); saveDraft(); });
 qs("promptInput").addEventListener("keydown", event => {
+  if (event.isComposing || event.keyCode === 229) return;
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
-    send();
+    if (!state.busy) void send();
   }
 });
-
 qs("uploadBtn").addEventListener("click", () => qs("imageInput").click());
 qs("imageInput").addEventListener("change", event => {
-  try {
-    appendFiles(event.target.files);
-    event.target.value = "";
-  } catch (error) {
-    showToast(error.message || String(error));
-  }
+  try { appendFiles(event.target.files); }
+  catch (error) { showToast(error.message || String(error)); }
+  finally { event.target.value = ""; }
 });
-
 qs("promptInput").addEventListener("paste", event => {
   const files = Array.from(event.clipboardData ? event.clipboardData.files : []).filter(file => file.type.startsWith("image/"));
-  if (!files.length) return;
-  try {
-    appendFiles(files);
-    showToast(`已粘贴 ${files.length} 张图片`);
-  } catch (error) {
-    showToast(error.message || String(error));
-  }
+  if (!files.length || state.busy) return;
+  try { appendFiles(files); showToast(`已添加 ${files.length} 张参考图`); }
+  catch (error) { showToast(error.message || String(error)); }
 });
-
 for (const name of ["dragenter", "dragover"]) {
   composer.addEventListener(name, event => {
     event.preventDefault();
-    composer.classList.add("dragging");
+    if (!state.busy) composer.classList.add("dragging");
   });
 }
-for (const name of ["dragleave", "drop"]) {
-  composer.addEventListener(name, event => {
-    event.preventDefault();
-    composer.classList.remove("dragging");
-  });
-}
+for (const name of ["dragleave", "drop"]) composer.addEventListener(name, event => { event.preventDefault(); composer.classList.remove("dragging"); });
 composer.addEventListener("drop", event => {
-  try {
-    appendFiles(event.dataTransfer.files);
-  } catch (error) {
-    showToast(error.message || String(error));
-  }
+  try { appendFiles(event.dataTransfer.files); } catch (error) { showToast(error.message || String(error)); }
 });
-
 qs("newChatBtn").addEventListener("click", () => {
-  closeSidebar();
+  if (state.busy || state.operationBusy || !confirmDraftReplacement()) return;
+  closeSidebar(false);
   resetChat();
+  qs("promptInput").focus();
 });
-qs("adminBtn").addEventListener("click", openDrawer);
-qs("topStatus").addEventListener("click", openDrawer);
+qs("adminBtn").addEventListener("click", () => openDrawer());
+qs("topStatus").addEventListener("click", () => openDrawer("connection"));
 qs("setupNoticeBtn").addEventListener("click", () => openWizard(true));
 qs("closeDrawerBtn").addEventListener("click", closeDrawer);
-qs("closeWizardBtn").addEventListener("click", closeWizard);
-qs("wizardSaveBtn").addEventListener("click", () => wizardSave(false));
-qs("wizardMockBtn").addEventListener("click", () => wizardSave(true));
-qs("wizardTestBtn").addEventListener("click", async () => {
-  applyWizardToSettings(false);
-  if (!qs("apiKey").value.trim()) {
-    showToast("请先填写接口密钥后再测试。");
+qs("closeSidebarBtn").addEventListener("click", () => closeSidebar());
+qs("closeWizardBtn").addEventListener("click", () => { if (!state.operationBusy) closeWizard(); });
+qs("wizardSaveBtn").addEventListener("click", () => runAction(["wizardSaveBtn", "wizardMockBtn", "wizardTestBtn"], () => wizardSave(false)));
+qs("wizardMockBtn").addEventListener("click", () => runAction(["wizardSaveBtn", "wizardMockBtn", "wizardTestBtn"], () => wizardSave(true)));
+qs("wizardTestBtn").addEventListener("click", () => runAction(["wizardTestBtn", "wizardSaveBtn", "wizardMockBtn"], async () => {
+  if (!qs("wizardApiKey").value.trim() && !(state.config && state.config.has_api_key)) {
+    showToast("请先填写接口密钥。");
     qs("wizardApiKey").focus();
     return;
   }
+  applyWizardToSettings(false);
   try {
     const body = await requestJSON("/api/test", commonPayload());
     qs("wizardConnectionStatus").className = "connection-status ok";
-    qs("wizardConnectionStatus").textContent = body.message || "连接成功，可以保存并开始使用。";
-    showToast(body.message || "连接测试成功");
+    qs("wizardConnectionStatus").textContent = body.message || "连接成功，可以保存配置。";
   } catch (error) {
     qs("wizardConnectionStatus").className = "connection-status";
     qs("wizardConnectionStatus").textContent = humanError(error.message || String(error));
   }
-});
-qs("menuBtn").addEventListener("click", () => {
-  if (qs("sidebar").classList.contains("open")) closeSidebar();
-  else openSidebar();
-});
-qs("scrim").addEventListener("click", () => {
-  closeDrawer();
-  closeSidebar();
-});
+}));
+qs("menuBtn").addEventListener("click", () => qs("sidebar").classList.contains("open") ? closeSidebar() : openSidebar());
+qs("scrim").addEventListener("click", () => { if (closeDrawer()) closeSidebar(); });
 document.addEventListener("keydown", event => {
+  const modal = activeModal();
+  if (!modal || event.isComposing) return;
+  if (modal.id === "imageViewer" && !event.ctrlKey && !event.metaKey && !event.altKey && ["ArrowLeft", "ArrowRight"].includes(event.key)) {
+    event.preventDefault();
+    moveViewer(event.key === "ArrowLeft" ? -1 : 1);
+  }
   if (event.key === "Escape") {
-    closeWizard();
-    closeDrawer();
-    closeSidebar();
+    event.preventDefault();
+    if (modal.id === "imageViewer") closeImageViewer();
+    else if (modal.id === "setupWizard") { if (!state.operationBusy) closeWizard(); }
+    else if (modal.id === "drawer") closeDrawer();
+    else closeSidebar();
+  }
+  if (event.key === "Tab") {
+    const elements = Array.from(modal.querySelectorAll('button, input, select, textarea, a[href], summary, [tabindex="0"]')).filter(el => !el.disabled && el.tabIndex >= 0 && !el.closest("[inert]") && el.getClientRects().length);
+    const first = elements[0];
+    const last = elements[elements.length - 1];
+    if (!first) { event.preventDefault(); modal.focus(); return; }
+    if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
   }
 });
-
-qs("saveConfigBtn").addEventListener("click", () => saveConfig());
-qs("diagnoseBtn").addEventListener("click", diagnose);
-qs("updateBtn").addEventListener("click", handleUpdateClick);
-qs("rollbackBtn").addEventListener("click", rollbackUpdate);
-qs("sideUpdateBtn").addEventListener("click", () => {
-  openDrawer();
-  qs("maintenanceSettings").open = true;
-  handleUpdateClick();
+qs("viewerCloseBtn").addEventListener("click", () => closeImageViewer());
+qs("imageViewer").addEventListener("click", event => {
+  if (event.target === qs("imageViewer") || event.target === qs("viewerStage") || event.target === qs("viewerCanvas")) closeImageViewer();
 });
-qs("testBtn").addEventListener("click", async () => {
+qs("viewerPrevBtn").addEventListener("click", () => moveViewer(-1));
+qs("viewerNextBtn").addEventListener("click", () => moveViewer(1));
+qs("viewerFitBtn").addEventListener("click", () => setViewerZoom("fit"));
+qs("viewerOriginalBtn").addEventListener("click", () => setViewerZoom("original"));
+qs("viewerDownloadBtn").addEventListener("click", () => { if (state.viewer) window.downloadImage(state.viewer.batchId, state.viewer.index); });
+qs("viewerEditBtn").addEventListener("click", () => {
+  const viewer = state.viewer;
+  if (!viewer || state.busy || state.operationBusy) return;
+  void runAction(["viewerEditBtn", "viewerDownloadBtn", "viewerPrevBtn", "viewerNextBtn"], async () => {
+    viewer.editing = true;
+    try {
+      const applied = await window.editResultImage(viewer.batchId, viewer.index);
+      viewer.editing = false;
+      if (applied && state.viewer === viewer) {
+        closeImageViewer(false);
+        qs("promptInput").focus({ preventScroll: true });
+      }
+    } finally { viewer.editing = false; }
+  });
+});
+new ResizeObserver(() => fitViewerImage()).observe(qs("viewerStage"));
+for (const button of document.querySelectorAll(".settings-tab")) {
+  button.addEventListener("click", () => selectSettingsTab(button.dataset.tab));
+  button.addEventListener("keydown", event => {
+    const tabs = Array.from(document.querySelectorAll(".settings-tab"));
+    let index = tabs.indexOf(button);
+    if (event.key === "ArrowRight") index = (index + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") index = (index + tabs.length - 1) % tabs.length;
+    else if (event.key === "Home") index = 0;
+    else if (event.key === "End") index = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    selectSettingsTab(tabs[index].dataset.tab, true);
+  });
+}
+for (const input of document.querySelectorAll('input[name="theme"]')) input.addEventListener("change", () => applyTheme(input.value));
+qs("toggleKeyBtn").addEventListener("click", () => {
+  const visible = qs("apiKey").type === "password";
+  qs("apiKey").type = visible ? "text" : "password";
+  qs("toggleKeyBtn").setAttribute("aria-pressed", String(visible));
+  qs("toggleKeyBtn").setAttribute("aria-label", visible ? "隐藏密钥" : "显示密钥");
+  qs("toggleKeyBtn").title = visible ? "隐藏密钥" : "显示密钥";
+});
+qs("saveConfigBtn").addEventListener("click", () => runAction(["saveConfigBtn", "testBtn"], () => saveConfig()));
+qs("diagnoseBtn").addEventListener("click", () => runAction(["diagnoseBtn"], diagnose, "检查中..."));
+qs("updateBtn").addEventListener("click", () => { if (!state.busy) handleUpdateClick(); });
+qs("rollbackBtn").addEventListener("click", () => { if (!state.busy) void rollbackUpdate(); });
+qs("sideUpdateBtn").addEventListener("click", () => { openDrawer("updates"); if (!state.busy) handleUpdateClick(); });
+qs("testBtn").addEventListener("click", () => runAction(["testBtn", "saveConfigBtn"], async () => {
   try {
     const body = await requestJSON("/api/test", commonPayload());
     qs("connectionStatus").className = "connection-status ok";
-    qs("connectionStatus").textContent = body.message || "连接成功，可以开始生成。";
-    showToast(body.message || "连接测试完成");
+    qs("connectionStatus").textContent = body.message || "连接测试通过。";
+    showToast(body.message || "连接测试通过");
   } catch (error) {
     qs("connectionStatus").className = "connection-status";
     qs("connectionStatus").textContent = humanError(error.message || String(error));
   }
-});
+}));
 qs("copyDiagBtn").addEventListener("click", async () => {
-  if (!state.lastDiagnostics) {
-    showToast("没有诊断信息");
-    return;
-  }
+  if (!state.lastDiagnostics) { showToast("请先检查问题，再复制诊断。"); return; }
   await copyText(JSON.stringify(state.lastDiagnostics, null, 2));
   showToast("诊断已复制");
 });
 qs("copyErrorBtn").addEventListener("click", window.copyLastError);
-qs("clearHistoryBtn").addEventListener("click", () => clearStorage("history"));
-qs("clearImagesBtn").addEventListener("click", () => clearStorage("images"));
-qs("clearLogsBtn").addEventListener("click", () => clearStorage("logs"));
-qs("exportHistoryBtn").addEventListener("click", exportHistory);
-qs("clearAllBtn").addEventListener("click", () => clearStorage("all"));
-qs("moreSettingsBtn").addEventListener("click", () => {
-  openDrawer();
-  qs("advancedSettings").open = true;
-});
-
-for (const button of document.querySelectorAll(".size-preset")) {
-  button.addEventListener("click", () => {
-    qs("sizeInput").value = button.dataset.size || "1024x1024";
-    renderOptionSummary();
-  });
+const dataButtons = ["clearHistoryBtn", "clearImagesBtn", "clearLogsBtn", "clearAllBtn", "exportHistoryBtn"];
+for (const [id, target] of Object.entries({ clearHistoryBtn: "history", clearImagesBtn: "images", clearLogsBtn: "logs", clearAllBtn: "all" })) {
+  qs(id).addEventListener("click", () => runAction(dataButtons, () => clearStorage(target)));
 }
-
-for (const id of ["baseUrl", "apiKey", "model", "timeoutSecInput", "mockMode", "sizeInput", "countInput", "qualityInput", "backgroundInput", "outputFormatInput"]) {
+qs("exportHistoryBtn").addEventListener("click", () => runAction(dataButtons, exportHistory));
+qs("moreSettingsBtn").addEventListener("click", () => openDrawer("image"));
+qs("loadMoreHistoryBtn").addEventListener("click", () => loadHistory(state.historyLimit + 50));
+qs("historySearch").addEventListener("input", () => {
+  renderHistory();
+  clearTimeout(state.searchTimer);
+  state.searchTimer = setTimeout(() => { if (qs("historySearch").value.trim() && state.historyHasMore && state.historyLimit < 1000) void loadHistory(1000); }, 200);
+});
+for (const button of document.querySelectorAll(".size-preset")) button.addEventListener("click", () => {
+  qs("sizeInput").value = button.dataset.size || "1024x1024";
+  renderOptionSummary();
+  saveDraft();
+});
+for (const id of ["baseUrl", "apiKey", "model", "timeoutSecInput", "mockMode", "sizeInput", "countInput", "qualityInput", "complexityInput", "backgroundInput", "outputFormatInput", "requestMode"]) {
   qs(id).addEventListener("input", () => {
-    if (id === "model") syncModelPreset(qs("model").value.trim());
-    state.timeoutSec = Number(qs("timeoutSecInput").value || state.timeoutSec || 240);
-    renderConfig();
+    if (id === "model") {
+      const model = qs("model").value.trim();
+      qs("modelPreset").value = Array.from(qs("modelPreset").options).some(option => option.value === model) ? model : "";
+      renderQuickModel(model);
+    }
+    if (qs("timeoutSecInput").checkValidity() && Number(qs("timeoutSecInput").value)) state.timeoutSec = Number(qs("timeoutSecInput").value);
     renderOptionSummary();
+    renderConfig();
+    saveDraft();
   });
 }
-
 qs("modelPreset").addEventListener("change", () => {
-  if (qs("modelPreset").value) qs("model").value = qs("modelPreset").value;
+  if (!qs("modelPreset").value) {
+    qs("customModelField").classList.remove("hidden");
+    qs("model").focus();
+    qs("model").select();
+    return;
+  }
+  qs("model").value = qs("modelPreset").value;
+  syncModelPreset(qs("model").value);
+  renderOptionSummary();
   renderConfig();
+  saveDraft();
 });
-qs("requestMode").addEventListener("change", renderConfig);
-
+qs("quickModel").addEventListener("change", () => {
+  if (qs("quickModel").value === "__custom__") {
+    renderQuickModel();
+    openDrawer("image");
+    qs("modelPreset").value = "";
+    qs("customModelField").classList.remove("hidden");
+    qs("model").focus();
+    qs("model").select();
+    return;
+  }
+  qs("model").value = qs("quickModel").value;
+  syncModelPreset(qs("model").value);
+  renderOptionSummary();
+  renderConfig();
+  saveDraft();
+});
+window.addEventListener("resize", () => { updateScrim(); autoSizePrompt(); });
+window.addEventListener("beforeunload", event => {
+  saveDraft();
+  if (state.busy || state.operationBusy || state.updateBusy || configDirty() || state.files.length) { event.preventDefault(); event.returnValue = ""; }
+});
+qs("modelPreset").innerHTML = '<option value="">自定义模型</option>' + MODEL_PRESETS.map(model => `<option value="${attr(model)}">${esc(modelPresetLabel(model))}</option>`).join("");
+renderQuickModel();
 renderFiles();
 renderOptionSummary();
-loadConfig();
-loadHistory();
+updateScrim();
+void loadConfig();
+void loadHistory();
 </script>
 </body>
 </html>
